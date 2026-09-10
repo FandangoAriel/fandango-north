@@ -4,10 +4,7 @@ import { handleReport, json } from "../../shared/handlers";
 export const handler: Handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") return json(405, { error: "method_not_allowed" });
-    const payload = JSON.parse(event.body || "{}") as {
-      farmId?: string;
-      items?: { id: string; actual: number; name?: string }[];
-    };
+    const payload = JSON.parse(event.body || "{}");
     return await handleReport(payload);
   } catch (error) {
     const message = error instanceof Error ? error.message : "error";

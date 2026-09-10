@@ -14,7 +14,7 @@ import {
   googleReportStock,
   googleSaveLoad,
 } from "./google";
-import type { FarmId } from "./types";
+import type { FarmId, LoadMark, StockUpdate } from "./types";
 
 const jsonHeaders = {
   "Content-Type": "application/json; charset=utf-8",
@@ -63,19 +63,23 @@ export async function handleInventory(farmRaw: string | null) {
 
 export async function handleReport(payload: {
   farmId?: string;
-  items?: { id: string; actual: number; name?: string }[];
+  user?: string;
+  note?: string;
+  items?: StockUpdate[];
 }) {
   const farmId = farmIdFrom(payload.farmId ?? null);
   const items = payload.items ?? [];
+  const user = payload.user ?? "";
+  const note = payload.note ?? "";
   if (googleConfigured() && !isDemoMode()) {
     try {
-      const farm = await googleReportStock(farmId, items);
+      const farm = await googleReportStock(farmId, items, user, note);
       return json(200, { farm, demo: false });
     } catch {
       // demo fallback
     }
   }
-  const farm = reportStock(farmId, items);
+  const farm = reportStock(farmId, items, user, note);
   return json(200, { farm, demo: true });
 }
 
@@ -95,19 +99,24 @@ export async function handleGetLoad(farmRaw: string | null) {
 export async function handleSaveLoad(payload: {
   farmId?: string;
   user?: string;
+  note?: string;
   loadedIds?: string[];
+  items?: { itemId: string; mark?: LoadMark; haveQty?: number | null }[];
 }) {
   const farmId = farmIdFrom(payload.farmId ?? null);
   const user = payload.user ?? "";
-  const loadedIds = payload.loadedIds ?? [];
+  const note = payload.note ?? "";
+  const items =
+    payload.items ??
+    (payload.loadedIds ?? []).map((itemId) => ({ itemId, mark: "full" as const, haveQty: null }));
   if (googleConfigured() && !isDemoMode()) {
     try {
-      const record = await googleSaveLoad(farmId, user, loadedIds);
+      const record = await googleSaveLoad(farmId, user, items, note);
       return json(200, { record, demo: false });
     } catch {
       // demo fallback
     }
   }
-  const record = saveLoad(farmId, user, loadedIds);
+  const record = saveLoad(farmId, user, items, note);
   return json(200, { record, demo: true });
 }

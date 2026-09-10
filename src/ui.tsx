@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { LoadMark } from "../shared/types";
 
 export function Screen({
   title,
@@ -14,27 +15,26 @@ export function Screen({
   demo?: boolean;
 }) {
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col overflow-x-hidden overscroll-y-contain px-4 pb-8 pt-[max(1rem,env(safe-area-inset-top))]">
-      <header className="mb-5">
+    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col overflow-x-hidden overscroll-y-contain px-3 pb-4 pt-[max(0.5rem,env(safe-area-inset-top))]">
+      <header className="mb-2">
         {onBack && (
           <button
             type="button"
             onClick={onBack}
-            className="mb-3 min-h-11 text-sm font-medium text-[#3d6b4a]"
+            className="mb-1 min-h-8 text-xs font-medium text-[#3d6b4a]"
           >
             חזרה
           </button>
         )}
-        <p className="text-xs font-medium tracking-wide text-[#3d6b4a]">פאנדנגו צפון</p>
-        <h1 className="mt-1 text-2xl font-bold leading-tight">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-black/60">{subtitle}</p>}
+        <h1 className="text-lg font-bold leading-tight">{title}</h1>
+        {subtitle && <p className="text-[12px] leading-snug text-black/60">{subtitle}</p>}
         {demo && (
-          <p className="mt-3 rounded-xl bg-[#efe4c8] px-3 py-2 text-sm text-[#7a5b12]">
-            מצב דמו — השינויים נשמרים כאן, לא בגיליון החי
+          <p className="mt-1 rounded-md bg-[#efe4c8] px-2 py-1 text-[11px] text-[#7a5b12]">
+            מצב דמו — נשמר כאן, לא בגיליון החי
           </p>
         )}
       </header>
-      <main className="flex flex-1 flex-col gap-3">{children}</main>
+      <main className="flex flex-1 flex-col gap-2">{children}</main>
     </div>
   );
 }
@@ -55,7 +55,7 @@ export function PrimaryButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className="min-h-12 w-full rounded-2xl bg-[#3d6b4a] px-4 text-base font-semibold text-white disabled:opacity-50"
+      className="min-h-11 w-full rounded-xl bg-[#3d6b4a] px-4 text-[15px] font-semibold text-white disabled:opacity-50"
     >
       {children}
     </button>
@@ -73,47 +73,91 @@ export function SecondaryButton({
     <button
       type="button"
       onClick={onClick}
-      className="min-h-12 w-full rounded-2xl border border-black/10 bg-white px-4 text-base font-semibold"
+      className="min-h-11 w-full rounded-xl border border-black/10 bg-white px-4 text-[15px] font-semibold"
     >
       {children}
     </button>
   );
 }
 
-export function Qty({
+export function CompactQty({
+  value,
+  onChange,
+  label,
+  placeholder,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  label: string;
+  placeholder?: string;
+}) {
+  return (
+    <input
+      aria-label={label}
+      inputMode="numeric"
+      value={value}
+      placeholder={placeholder}
+      onChange={(event) => onChange(event.target.value.replace(/[^\d]/g, ""))}
+      className="h-7 w-11 shrink-0 rounded-md border border-black/15 bg-white text-center text-[13px] tabular-nums"
+    />
+  );
+}
+
+export function NoteField({
   value,
   onChange,
   label,
 }: {
-  value: number;
-  onChange: (next: number) => void;
+  value: string;
+  onChange: (next: string) => void;
   label: string;
 }) {
   return (
-    <div className="flex items-center gap-2" dir="ltr">
-      <button
-        type="button"
-        aria-label={`הפחת ${label}`}
-        onClick={() => onChange(Math.max(0, value - 1))}
-        className="flex size-11 items-center justify-center rounded-xl border border-black/10 bg-white text-xl"
-      >
-        −
-      </button>
-      <input
-        aria-label={label}
-        inputMode="numeric"
+    <label className="block">
+      <span className="mb-0.5 block text-[11px] text-black/50">{label}</span>
+      <textarea
         value={value}
-        onChange={(event) => onChange(Math.max(0, Number(event.target.value) || 0))}
-        className="h-11 w-16 rounded-xl border border-black/10 bg-white text-center text-lg tabular-nums"
+        onChange={(event) => onChange(event.target.value)}
+        rows={2}
+        className="w-full resize-y rounded-lg border border-black/15 bg-white px-2 py-1.5 text-[13px] leading-snug"
       />
-      <button
-        type="button"
-        aria-label={`הוסף ${label}`}
-        onClick={() => onChange(value + 1)}
-        className="flex size-11 items-center justify-center rounded-xl border border-black/10 bg-white text-xl"
-      >
-        +
-      </button>
-    </div>
+    </label>
+  );
+}
+
+const MARK_LABEL: Record<LoadMark, string> = {
+  unset: "לא סומן",
+  full: "הועמס במלואו",
+  partial: "כמות חלקית",
+  none: "אין",
+};
+
+export function TriMark({
+  mark,
+  onCycle,
+  label,
+}: {
+  mark: LoadMark;
+  onCycle: () => void;
+  label: string;
+}) {
+  const look =
+    mark === "full"
+      ? "border-[#3d6b4a] bg-[#3d6b4a] text-white"
+      : mark === "partial"
+        ? "border-[#b45309] bg-[#b45309] text-white"
+        : mark === "none"
+          ? "border-[#9f1239] bg-[#9f1239] text-white"
+          : "border-black/35 bg-white text-black/0";
+  const glyph = mark === "full" ? "V" : mark === "partial" ? "/" : mark === "none" ? "X" : "";
+  return (
+    <button
+      type="button"
+      aria-label={`${label}: ${MARK_LABEL[mark]}`}
+      onClick={onCycle}
+      className={`flex size-6 shrink-0 items-center justify-center rounded-[5px] border text-[12px] font-bold leading-none ${look}`}
+    >
+      {glyph}
+    </button>
   );
 }

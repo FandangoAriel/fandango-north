@@ -1,8 +1,8 @@
+import { Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { Farm, FarmId } from "../../shared/types";
-import { toSupply } from "../../shared/types";
+import type { Farm, FarmId, StockUpdate } from "../../shared/types";
 import { api } from "../api";
-import { PrimaryButton, Qty, Screen } from "../ui";
+import { CompactQty, NoteField, PrimaryButton, Screen } from "../ui";
 
 export function ReportScreen({
   farmId,
@@ -18,12 +18,20 @@ export function ReportScreen({
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [actualDraft, setActualDraft] = useState<Record<string, string>>({});
+  const [maxDraft, setMaxDraft] = useState<Record<string, string>>({});
+  const [editingMax, setEditingMax] = useState<string | null>(null);
+  const [note, setNote] = useState("");
 
   useEffect(() => {
     api<{ farm: Farm; demo: boolean }>(`/api/inventory?farm=${farmId}`)
       .then((data) => {
         setFarm(data.farm);
         setDemo(data.demo);
+        setActualDraft({});
+        setMaxDraft({});
+        setEditingMax(null);
+        setNote("");
       })
       .catch(() => setError("לא הצלחנו לטעון את המלאי"));
   }, [farmId]);
@@ -34,21 +42,36 @@ export function ReportScreen({
     setMessage("");
     setError("");
     try {
+      const items: StockUpdate[] = [];
+      for (const item of farm.equipment) {
+        const update: StockUpdate = { id: item.id, name: item.name };
+        let changed = false;
+        const actualRaw = actualDraft[item.id];
+        if (actualRaw !== undefined && actualRaw !== "") {
+          update.actual = Number(actualRaw);
+          changed = true;
+        }
+        const maxRaw = maxDraft[item.id];
+        if (maxRaw !== undefined && maxRaw !== "") {
+          const nextMax = Number(maxRaw);
+          if (nextMax !== item.maxStock) {
+            update.maxStock = nextMax;
+            changed = true;
+          }
+        }
+        if (changed) items.push(update);
+      }
       const data = await api<{ farm: Farm; demo: boolean }>("/api/report", {
         method: "POST",
-        body: JSON.stringify({
-          farmId,
-          user,
-          items: farm.equipment.map((item) => ({
-            id: item.id,
-            actual: item.actual,
-            name: item.name,
-          })),
-        }),
+        body: JSON.stringify({ farmId, user, note, items }),
       });
       setFarm(data.farm);
       setDemo(data.demo);
-      setMessage("המלאי נשמר");
+      setActualDraft({});
+      setMaxDraft({});
+      setEditingMax(null);
+      setNote("");
+      setMessage(items.length || note.trim() ? "הדיווח נשמר" : "אין כמויות לדיווח");
     } catch {
       setError("השמירה נכשלה");
     } finally {
@@ -59,7 +82,7 @@ export function ReportScreen({
   if (!farm && !error) {
     return (
       <Screen title="דיווח מלאי" onBack={onBack}>
-        <p className="text-black/60">טוען מלאי…</p>
+        <p className="text-sm text-black/60">טוען מלאי…</p>
       </Screen>
     );
   }
@@ -67,45 +90,60 @@ export function ReportScreen({
   return (
     <Screen
       title="דיווח מלאי"
-      subtitle={`${farm?.name ?? ""} · כמה יש עכשיו בחווה`}
+      subtitle={`${farm?.name ?? ""} · רשמו כמה יש עכשיו`}
       onBack={onBack}
       demo={demo}
     >
-      {error && <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
-      {message && <p className="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{message}</p>}
-      <div className="grid gap-3">
+      {error && <p className="rounded-md bg-red-50 px-2 py-1 text-[12px] text-red-800">{error}</p>}
+      {message && (
+        <p className="rounded-md bg-emerald-50 px-2 py-1 text-[12px] text-emerald-800">{message}</p>
+      )}
+      <div className="overflow-hidden rounded-lg bg-white">
         {farm?.equipment.map((item) => {
-          const need = toSupply(item);
+          const maxValue = maxDraft[item.id] ?? String(item.maxStock);
+          const editing = editingMax === item.id;
           return (
-            <article key={item.id} className="rounded-2xl bg-white p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="font-semibold">{item.name}</h2>
-                  <p className="text-sm text-black/55">יעד {item.maxStock}</p>
-                  {need > 0 ? (
-                    <p className="mt-1 text-sm text-[#b45309]">חסר {need}</p>
-                  ) : (
-                    <p className="mt-1 text-sm text-[#3d6b4a]">מלא</p>
-                  )}
-                </div>
-                <Qty
-                  label={`כמות בפועל של ${item.name}`}
-                  value={item.actual}
-                  onChange={(actual) =>
-                    setFarm({
-                      ...farm,
-                      equipment: farm.equipment.map((row) =>
-                        row.id === item.id ? { ...row, actual } : row,
-                      ),
-                    })
-                  }
+            <div
+              key={item.id}
+              className="flex items-center gap-1.5 border-b border-black/8 px-2 py-0.5 last:border-b-0"
+            >
+              <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-tight">
+                {item.name}
+              </span>
+              {editing ? (
+                <CompactQty
+                  label={`מקס של ${item.name}`}
+                  value={maxValue}
+                  onChange={(value) => setMaxDraft((current) => ({ ...current, [item.id]: value }))}
                 />
-              </div>
-            </article>
+              ) : (
+                <span className="shrink-0 text-[12px] text-black/50">מקס {maxValue}</span>
+              )}
+              <button
+                type="button"
+                aria-label={`עריכת מקס של ${item.name}`}
+                onClick={() => {
+                  setMaxDraft((current) => ({
+                    ...current,
+                    [item.id]: current[item.id] ?? String(item.maxStock),
+                  }));
+                  setEditingMax(editing ? null : item.id);
+                }}
+                className="flex size-7 shrink-0 items-center justify-center rounded-md text-[#3d6b4a]"
+              >
+                <Pencil size={13} strokeWidth={2.2} />
+              </button>
+              <CompactQty
+                label={`כמות בפועל של ${item.name}`}
+                value={actualDraft[item.id] ?? ""}
+                onChange={(value) => setActualDraft((current) => ({ ...current, [item.id]: value }))}
+              />
+            </div>
           );
         })}
       </div>
-      <div className="sticky bottom-0 bg-[#f4efe4] pt-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <NoteField value={note} onChange={setNote} label="הערה" />
+      <div className="sticky bottom-0 bg-[#f4efe4] pt-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
         <PrimaryButton onClick={save} disabled={saving || !farm}>
           {saving ? "שומר…" : "שמירה לגיליון"}
         </PrimaryButton>

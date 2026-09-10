@@ -1,8 +1,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createSeedStore } from "./seed";
-import type { AppStore, FarmId, LoadItem, LoadRecord } from "./types";
-import { farmLoadItems, todayIso } from "./types";
+import type { AppStore, FarmId, LoadItem, LoadMark, LoadRecord, StockUpdate } from "./types";
+import { farmLoadItems, previousLoadMap, todayIso } from "./types";
 
 const STORE_PATH = join(process.cwd(), ".data", "store.json");
 
@@ -17,9 +17,20 @@ function readStore(): AppStore {
       return {
         ...farm,
         containers: farm.containers ?? fromSeed?.containers ?? [],
+        equipment: (farm.equipment ?? []).map((item) => {
+          const seeded = fromSeed?.equipment.find((row) => row.id === item.id);
+          return {
+            ...item,
+            toComplete:
+              typeof item.toComplete === "number"
+                ? item.toComplete
+                : (seeded?.toComplete ?? Math.max(0, item.maxStock - item.actual)),
+          };
+        }),
       };
     });
     parsed.loads = parsed.loads ?? [];
+    parsed.reports = parsed.reports ?? [];
     return parsed;
   } catch {
     return seed;
@@ -28,7 +39,7 @@ function readStore(): AppStore {
 
 function writeStore(store: AppStore) {
   mkdirSync(dirname(STORE_PATH), { recursive: true });
-  writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
+  writeFileSync(STORE_PATH, JSON.stringify(store, null, 2), { encoding: "utf8" });
 }
 
 export function listUsers(): string[] {
@@ -43,7 +54,9 @@ export function getFarm(farmId: FarmId) {
 
 export function reportStock(
   farmId: FarmId,
-  updates: { id: string; actual: number }[],
+  updates: StockUpdate[],
+  user = "",
+  note = "",
 ) {
   const store = readStore();
   const farm = store.farms.find((item) => item.id === farmId);
@@ -51,9 +64,22 @@ export function reportStock(
   for (const update of updates) {
     const item = farm.equipment.find((row) => row.id === update.id);
     if (!item) continue;
-    item.actual = Math.max(0, Math.round(Number(update.actual) || 0));
+    if (update.actual !== undefined && Number.isFinite(Number(update.actual))) {
+      item.actual = Math.max(0, Math.round(Number(update.actual)));
+    }
+    if (update.maxStock !== undefined && Number.isFinite(Number(update.maxStock))) {
+      item.maxStock = Math.max(0, Math.round(Number(update.maxStock)));
+    }
   }
   farm.updatedAt = todayIso();
+  store.reports.push({
+    id: crypto.randomUUID(),
+    at: new Date().toISOString(),
+    user: user.trim() || "לא ידוע",
+    farmId,
+    note: note.trim() || undefined,
+    items: updates,
+  });
   writeStore(store);
   return farm;
 }
@@ -63,26 +89,34 @@ export function getLoadChecklist(farmId: FarmId): LoadItem[] {
   const farm = store.farms.find((item) => item.id === farmId);
   if (!farm) throw new Error("farm_not_found");
   const latest = [...store.loads].reverse().find((load) => load.farmId === farmId);
-  const checked = new Set(
-    (latest?.items ?? []).filter((item) => item.loaded).map((item) => item.itemId),
-  );
-  return farmLoadItems(farm, checked);
+  return farmLoadItems(farm, previousLoadMap(latest?.items));
 }
 
 export function saveLoad(
   farmId: FarmId,
   user: string,
-  loadedIds: string[],
+  itemsPayload: { itemId: string; mark?: LoadMark; haveQty?: number | null }[],
+  note = "",
 ): LoadRecord {
   const store = readStore();
   const farm = store.farms.find((item) => item.id === farmId);
   if (!farm) throw new Error("farm_not_found");
-  const items = farmLoadItems(farm, new Set(loadedIds));
+  const byId = new Map(itemsPayload.map((item) => [item.itemId, item]));
+  const items = farmLoadItems(farm).map((item) => {
+    const update = byId.get(item.itemId);
+    if (!update) return item;
+    return {
+      ...item,
+      mark: update.mark ?? "unset",
+      haveQty: update.haveQty ?? null,
+    };
+  });
   const record: LoadRecord = {
     id: crypto.randomUUID(),
     at: new Date().toISOString(),
     user: user.trim() || "לא ידוע",
     farmId,
+    note: note.trim() || undefined,
     items,
   };
   store.loads.push(record);

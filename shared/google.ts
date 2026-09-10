@@ -1,6 +1,22 @@
 import { JWT } from "google-auth-library";
-import type { EquipmentItem, Farm, FarmId, LabeledContainer, LoadItem, LoadRecord } from "./types";
-import { FARM_SHEETS, farmLoadItems, isSuppliedFlag, todayIso } from "./types";
+import type {
+  EquipmentItem,
+  Farm,
+  FarmId,
+  LabeledContainer,
+  LoadItem,
+  LoadMark,
+  LoadRecord,
+  StockUpdate,
+} from "./types";
+import {
+  FARM_SHEETS,
+  completeFromRow,
+  farmLoadItems,
+  isSuppliedFlag,
+  previousLoadMap,
+  todayIso,
+} from "./types";
 
 const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
 
@@ -95,11 +111,14 @@ export async function googleGetFarm(farmId: FarmId): Promise<Farm> {
   for (let i = meta.startRow - 1; i < rows.length; i += 1) {
     const name = rows[i]?.[0]?.trim();
     if (name) {
+      const actual = parseNumber(rows[i]?.[1]);
+      const maxStock = parseNumber(rows[i]?.[2]);
       equipment.push({
         id: `${farmId}-${i}`,
         name,
-        actual: parseNumber(rows[i]?.[1]),
-        maxStock: parseNumber(rows[i]?.[2]),
+        actual,
+        maxStock,
+        toComplete: completeFromRow(rows[i], actual, maxStock),
       });
     }
     const customerName = rows[i]?.[meta.container.customerName]?.trim() ?? "";
@@ -119,62 +138,132 @@ export async function googleGetFarm(farmId: FarmId): Promise<Farm> {
 
 export async function googleReportStock(
   farmId: FarmId,
-  updates: { id: string; actual: number; name?: string }[],
+  updates: StockUpdate[],
+  user = "",
+  note = "",
 ) {
   const farm = await googleGetFarm(farmId);
   const meta = FARM_SHEETS[farmId];
-  const data = await sheetsGet(`'${meta.sheet}'!A${meta.startRow}:B80`);
+  const data = await sheetsGet(`'${meta.sheet}'!A${meta.startRow}:C80`);
   const rows = data.values ?? [];
-  const byName = new Map(updates.map((item) => [item.name, item.actual]));
+  const byName = new Map<string, StockUpdate>();
   for (const item of updates) {
     const found = farm.equipment.find((row) => row.id === item.id);
-    if (found) byName.set(found.name, item.actual);
+    byName.set(item.name || found?.name || item.id, item);
   }
   for (let i = 0; i < rows.length; i += 1) {
     const name = rows[i]?.[0]?.trim();
     if (!name || !byName.has(name)) continue;
+    const update = byName.get(name);
+    if (!update) continue;
     const rowNumber = meta.startRow + i;
-    await sheetsUpdate(`'${meta.sheet}'!B${rowNumber}`, [[byName.get(name) ?? 0]]);
+    if (update.actual !== undefined && update.maxStock !== undefined) {
+      await sheetsUpdate(`'${meta.sheet}'!B${rowNumber}:C${rowNumber}`, [[update.actual, update.maxStock]]);
+    } else if (update.actual !== undefined) {
+      await sheetsUpdate(`'${meta.sheet}'!B${rowNumber}`, [[update.actual]]);
+    } else if (update.maxStock !== undefined) {
+      await sheetsUpdate(`'${meta.sheet}'!C${rowNumber}`, [[update.maxStock]]);
+    }
   }
   await sheetsUpdate(`'${meta.sheet}'!C1`, [[todayIso()]]);
+  try {
+    await sheetsAppend("דיווחים!A1", [
+      [
+        new Date().toISOString(),
+        user,
+        FARM_SHEETS[farmId].name,
+        farmId,
+        note,
+        updates
+          .map((item) => {
+            const parts = [item.name || item.id];
+            if (item.actual !== undefined) parts.push(`יש ${item.actual}`);
+            if (item.maxStock !== undefined) parts.push(`מקס ${item.maxStock}`);
+            return parts.join(" ");
+          })
+          .join("; "),
+      ],
+    ]);
+  } catch {
+    // tab may not exist yet
+  }
   return googleGetFarm(farmId);
+}
+
+function parseMarksCell(value: string | undefined): Map<string, LoadItem> {
+  if (!value) return new Map();
+  try {
+    const parsed = JSON.parse(value) as {
+      itemId?: string;
+      name?: string;
+      mark?: LoadMark;
+      haveQty?: number | null;
+    }[];
+    const items: LoadItem[] = parsed.map((row) => ({
+      itemId: row.itemId || row.name || "",
+      kind: "stock",
+      name: row.name || row.itemId || "",
+      toSupply: 0,
+      mark: row.mark ?? "unset",
+      haveQty: row.haveQty ?? null,
+    }));
+    return previousLoadMap(items);
+  } catch {
+    const names = String(value)
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const items: LoadItem[] = names.map((name) => ({
+      itemId: name,
+      kind: "stock",
+      name,
+      toSupply: 0,
+      mark: "full",
+      haveQty: null,
+    }));
+    return previousLoadMap(items);
+  }
 }
 
 export async function googleGetLoad(farmId: FarmId): Promise<LoadItem[]> {
   const farm = await googleGetFarm(farmId);
-  let checked = new Set<string>();
+  let previous = new Map<string, LoadItem>();
   try {
-    const log = await sheetsGet("העמסות!A2:F200");
+    const log = await sheetsGet("העמסות!A2:H200");
     const rows = (log.values ?? []).reverse();
     const latest = rows.find((row) => row[2] === farmId || row[2] === FARM_SHEETS[farmId].name);
-    if (latest?.[5]) {
-      checked = new Set(
-        String(latest[5])
-          .split(",")
-          .map((part) => part.trim())
-          .filter(Boolean),
-      );
-    }
+    if (latest?.[7]) previous = parseMarksCell(latest[7]);
+    else if (latest?.[5]) previous = parseMarksCell(latest[5]);
   } catch {
     // tab may not exist yet
   }
-  return farmLoadItems(farm, checked);
+  return farmLoadItems(farm, previous);
 }
 
 export async function googleSaveLoad(
   farmId: FarmId,
   user: string,
-  loadedIds: string[],
+  itemsPayload: { itemId: string; mark?: LoadMark; haveQty?: number | null }[],
+  note = "",
 ): Promise<LoadRecord> {
   const items = await googleGetLoad(farmId);
-  const loaded = new Set(loadedIds);
-  const nextItems = items.map((item) => ({ ...item, loaded: loaded.has(item.itemId) }));
-  const loadedNames = nextItems.filter((item) => item.loaded).map((item) => item.name);
+  const byId = new Map(itemsPayload.map((item) => [item.itemId, item]));
+  const nextItems = items.map((item) => {
+    const update = byId.get(item.itemId);
+    if (!update) return item;
+    return {
+      ...item,
+      mark: update.mark ?? "unset",
+      haveQty: update.haveQty ?? null,
+    };
+  });
+  const marked = nextItems.filter((item) => item.mark !== "unset");
   const record: LoadRecord = {
     id: crypto.randomUUID(),
     at: new Date().toISOString(),
     user,
     farmId,
+    note: note.trim() || undefined,
     items: nextItems,
   };
   await sheetsAppend("העמסות!A1", [
@@ -183,8 +272,17 @@ export async function googleSaveLoad(
       user,
       FARM_SHEETS[farmId].name,
       farmId,
-      loadedNames.length,
-      loadedNames.join(", "),
+      marked.length,
+      marked.map((item) => item.name).join(", "),
+      note,
+      JSON.stringify(
+        nextItems.map((item) => ({
+          itemId: item.itemId,
+          name: item.name,
+          mark: item.mark,
+          haveQty: item.haveQty ?? null,
+        })),
+      ),
     ],
   ]);
   return record;

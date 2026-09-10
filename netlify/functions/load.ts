@@ -7,11 +7,7 @@ export const handler: Handler = async (event) => {
       return await handleGetLoad(event.queryStringParameters?.farm ?? null);
     }
     if (event.httpMethod === "POST") {
-      const payload = JSON.parse(event.body || "{}") as {
-        farmId?: string;
-        user?: string;
-        loadedIds?: string[];
-      };
+      const payload = JSON.parse(event.body || "{}");
       return await handleSaveLoad(payload);
     }
     return json(405, { error: "method_not_allowed" });
