@@ -14,7 +14,7 @@ export function Screen({
   demo?: boolean;
 }) {
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-4 pb-8 pt-[max(1rem,env(safe-area-inset-top))]">
+    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col overflow-x-hidden overscroll-y-contain px-4 pb-8 pt-[max(1rem,env(safe-area-inset-top))]">
       <header className="mb-5">
         {onBack && (
           <button
