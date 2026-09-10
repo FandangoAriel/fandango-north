@@ -33,7 +33,17 @@ function apiPlugin(): Plugin {
     name: "farm-api",
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
-        const url = req.url ? new URL(req.url, "http://127.0.0.1") : null;
+        if (req.headers.upgrade?.toLowerCase() === "websocket") {
+          next();
+          return;
+        }
+        let url: URL | null = null;
+        try {
+          url = req.url ? new URL(req.url, "http://127.0.0.1") : null;
+        } catch {
+          next();
+          return;
+        }
         if (!url?.pathname.startsWith("/api/")) {
           next();
           return;
@@ -81,5 +91,11 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     port: 43187,
+    strictPort: true,
+    allowedHosts: true,
+    hmr: {
+      host: "127.0.0.1",
+      clientPort: 43187,
+    },
   },
 });
