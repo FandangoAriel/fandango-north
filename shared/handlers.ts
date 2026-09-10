@@ -114,23 +114,25 @@ export async function handleSaveLoad(payload: {
   user?: string;
   note?: string;
   loadedIds?: string[];
+  byLoader?: boolean;
   items?: { itemId: string; mark?: LoadMark; haveQty?: number | null }[];
 }) {
   const farmId = farmIdFrom(payload.farmId ?? null);
   const user = payload.user ?? "";
   const note = payload.note ?? "";
+  const byLoader = Boolean(payload.byLoader);
   const items =
     payload.items ??
     (payload.loadedIds ?? []).map((itemId) => ({ itemId, mark: "full" as const, haveQty: null }));
   if (googleConfigured() && !isDemoMode()) {
     try {
-      const record = await googleSaveLoad(farmId, user, items, note);
+      const record = await googleSaveLoad(farmId, user, items, note, byLoader);
       return json(200, { record, demo: false });
     } catch {
       // demo fallback
     }
   }
-  const record = saveLoad(farmId, user, items, note);
+  const record = saveLoad(farmId, user, items, note, byLoader);
   return json(200, { record, demo: true });
 }
 

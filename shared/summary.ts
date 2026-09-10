@@ -12,6 +12,7 @@ export function loadWhatsAppText(
   user: string,
   items: LoadItem[],
   note = "",
+  byLoader = false,
 ) {
   const lines = [`העמסה · ${farmName}`, `${user} · ${new Date().toLocaleString("he-IL")}`, ""];
   const stock = items.filter((item) => item.kind === "stock");
@@ -41,6 +42,7 @@ export function loadWhatsAppText(
     lines.push("");
   }
   if (note.trim()) lines.push(`הערה: ${note.trim()}`);
+  if (byLoader) lines.push("ע״י המעמיס");
   return lines.join("\n").trim();
 }
 

@@ -44,6 +44,7 @@ export interface LoadRecord {
   user: string;
   farmId: FarmId;
   note?: string;
+  byLoader?: boolean;
   items: LoadItem[];
 }
 
@@ -60,6 +61,8 @@ export interface ReportRecord {
   user: string;
   farmId: FarmId;
   note?: string;
+  kind?: "inventory" | "load";
+  byLoader?: boolean;
   items: StockUpdate[];
 }
 

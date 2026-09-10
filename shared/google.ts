@@ -85,6 +85,35 @@ async function sheetsAppend(range: string, values: (string | number)[][]) {
   if (!res.ok) throw new Error(`sheets_append_${res.status}`);
 }
 
+const REPORTS_HEADER = [
+  "תאריך",
+  "משתמש",
+  "חווה",
+  "מזהה",
+  "הערה",
+  "סיכום",
+  "JSON",
+  "סוג",
+  "ע״י המעמיס",
+];
+
+async function appendReportsLog(row: (string | number)[]) {
+  try {
+    const existing = await sheetsGet("דיווחים!A1:I1");
+    const first = existing.values?.[0]?.[0]?.trim() ?? "";
+    if (!first) {
+      await sheetsUpdate("דיווחים!A1:I1", [REPORTS_HEADER]);
+    }
+  } catch {
+    try {
+      await sheetsUpdate("דיווחים!A1:I1", [REPORTS_HEADER]);
+    } catch {
+      // tab may not exist
+    }
+  }
+  await sheetsAppend("דיווחים!A1", [row]);
+}
+
 function parseNumber(value: string | undefined) {
   const n = Number(String(value ?? "").replace(",", ""));
   return Number.isFinite(n) ? n : 0;
@@ -226,23 +255,23 @@ export async function googleReportStock(
   }
   await sheetsUpdate(`'${meta.sheet}'!C1`, [[todayIso()]]);
   try {
-    await sheetsAppend("דיווחים!A1", [
-      [
-        new Date().toISOString(),
-        user,
-        FARM_SHEETS[farmId].name,
-        farmId,
-        note,
-        updates
-          .map((item) => {
-            const parts = [item.name || item.id];
-            if (item.actual !== undefined) parts.push(`יש ${item.actual}`);
-            if (item.maxStock !== undefined) parts.push(`מקס ${item.maxStock}`);
-            return parts.join(" ");
-          })
-          .join("; "),
-        JSON.stringify(updates),
-      ],
+    await appendReportsLog([
+      new Date().toISOString(),
+      user,
+      FARM_SHEETS[farmId].name,
+      farmId,
+      note,
+      updates
+        .map((item) => {
+          const parts = [item.name || item.id];
+          if (item.actual !== undefined) parts.push(`יש ${item.actual}`);
+          if (item.maxStock !== undefined) parts.push(`מקס ${item.maxStock}`);
+          return parts.join(" ");
+        })
+        .join("; "),
+      JSON.stringify(updates),
+      "דיווח",
+      "",
     ]);
   } catch {
     // tab may not exist yet
@@ -252,10 +281,11 @@ export async function googleReportStock(
 
 export async function googleListReports(farmId: FarmId): Promise<ReportRecord[]> {
   try {
-    const data = await sheetsGet("דיווחים!A2:G200");
+    const data = await sheetsGet("דיווחים!A2:I200");
     const farmName = FARM_SHEETS[farmId].name;
     return (data.values ?? [])
       .filter((row) => row[3] === farmId || row[2] === farmName)
+      .filter((row) => row[7] !== "העמסה")
       .map((row, index) => {
         let items: StockUpdate[] = [];
         try {
@@ -290,6 +320,7 @@ export async function googleSaveLoad(
   user: string,
   itemsPayload: { itemId: string; mark?: LoadMark; haveQty?: number | null }[],
   note = "",
+  byLoader = false,
 ): Promise<LoadRecord> {
   const items = await googleGetLoad(farmId);
   const byId = new Map(itemsPayload.map((item) => [item.itemId, item]));
@@ -309,6 +340,7 @@ export async function googleSaveLoad(
     user,
     farmId,
     note: note.trim() || undefined,
+    byLoader,
     items: nextItems,
   };
   await sheetsAppend("העמסות!A1", [
@@ -328,7 +360,40 @@ export async function googleSaveLoad(
           haveQty: item.haveQty ?? null,
         })),
       ),
+      byLoader ? "כן" : "",
     ],
   ]);
+  try {
+    await appendReportsLog([
+      record.at,
+      user,
+      FARM_SHEETS[farmId].name,
+      farmId,
+      note,
+      nextItems
+        .map((item) => {
+          const label = item.detail ? `${item.name} ${item.detail}` : item.name;
+          if (item.kind === "container") {
+            return `${label} ${item.mark}`;
+          }
+          return `${label} צריך ${item.toSupply} הועמס ${item.mark === "full" ? item.toSupply : item.mark === "partial" ? (item.haveQty ?? 0) : item.mark === "none" ? 0 : "לא סומן"}`;
+        })
+        .join("; "),
+      JSON.stringify(
+        nextItems.map((item) => ({
+          itemId: item.itemId,
+          name: item.name,
+          detail: item.detail,
+          mark: item.mark,
+          haveQty: item.haveQty ?? null,
+          toSupply: item.toSupply,
+        })),
+      ),
+      "העמסה",
+      byLoader ? "כן" : "לא",
+    ]);
+  } catch {
+    // דיווחים tab may not exist yet
+  }
   return record;
 }

@@ -61,7 +61,7 @@ export function getFarm(farmId: FarmId) {
 
 export function listReports(farmId: FarmId): ReportRecord[] {
   return [...readStore().reports]
-    .filter((item) => item.farmId === farmId)
+    .filter((item) => item.farmId === farmId && item.kind !== "load")
     .reverse()
     .slice(0, 20);
 }
@@ -105,6 +105,7 @@ export function reportStock(
     farmId,
     note: note.trim() || undefined,
     items: updates,
+    kind: "inventory" as const,
   });
   writeStore(store);
   return getFarm(farmId);
@@ -120,6 +121,7 @@ export function saveLoad(
   user: string,
   itemsPayload: { itemId: string; mark?: LoadMark; haveQty?: number | null }[],
   note = "",
+  byLoader = false,
 ): LoadRecord {
   const store = readStore();
   const farm = store.farms.find((item) => item.id === farmId);
@@ -141,9 +143,23 @@ export function saveLoad(
     user: user.trim() || "לא ידוע",
     farmId,
     note: note.trim() || undefined,
+    byLoader,
     items,
   };
   store.loads.push(record);
+  store.reports.push({
+    id: record.id,
+    at: record.at,
+    user: record.user,
+    farmId,
+    note: record.note,
+    kind: "load",
+    byLoader,
+    items: items.map((item) => ({
+      id: item.itemId,
+      name: item.detail ? `${item.name} · ${item.detail}` : item.name,
+    })),
+  });
   writeStore(store);
   return record;
 }
