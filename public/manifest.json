@@ -1,0 +1,17 @@
+{
+  "name": "ציוד חוות פאנדנגו בצפון",
+  "short_name": "פאנדנגו צפון",
+  "start_url": "/",
+  "display": "standalone",
+  "dir": "rtl",
+  "lang": "he",
+  "background_color": "#f4efe4",
+  "theme_color": "#3d6b4a",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

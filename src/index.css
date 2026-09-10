@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f4efe4;
+  --ink: #243328;
+  --brand: #3d6b4a;
+  --brand-dark: #2f5239;
+  --warn: #b45309;
+}
+
+html,
+body,
+#root {
+  min-height: 100dvh;
+}
+
+body {
+  margin: 0;
+  font-family: Heebo, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+button,
+input {
+  font: inherit;
+}

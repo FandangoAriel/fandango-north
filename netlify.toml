@@ -1,0 +1,38 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+  directory = "netlify/functions"
+
+[dev]
+  command = "npm run dev"
+  port = 43187
+  targetPort = 43187
+
+[[redirects]]
+  from = "/api/users"
+  to = "/.netlify/functions/users"
+  status = 200
+
+[[redirects]]
+  from = "/api/inventory"
+  to = "/.netlify/functions/inventory"
+  status = 200
+
+[[redirects]]
+  from = "/api/report"
+  to = "/.netlify/functions/report"
+  status = 200
+
+[[redirects]]
+  from = "/api/load"
+  to = "/.netlify/functions/load"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
