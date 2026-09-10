@@ -1,7 +1,6 @@
 "use client";
 
 import { Minus, Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -18,15 +17,14 @@ export function QtyStepper({
 }) {
   return (
     <div className={cn("inline-flex items-center gap-1", compact && "gap-0.5")} dir="ltr">
-      <Button
+      <button
         type="button"
-        size="icon-xs"
-        variant="outline"
         aria-label={`הפחת ${ariaLabel}`}
         onClick={() => onChange(Math.max(0, value - 1))}
+        className="inline-flex size-6 items-center justify-center rounded-md border border-border bg-background text-foreground hover:bg-muted"
       >
-        <Minus />
-      </Button>
+        <Minus className="size-3" />
+      </button>
       <Input
         type="number"
         min={0}
@@ -36,15 +34,14 @@ export function QtyStepper({
         onChange={(event) => onChange(Number(event.target.value))}
         className="h-7 w-14 px-1 text-center tabular-nums"
       />
-      <Button
+      <button
         type="button"
-        size="icon-xs"
-        variant="outline"
         aria-label={`הוסף ${ariaLabel}`}
         onClick={() => onChange(value + 1)}
+        className="inline-flex size-6 items-center justify-center rounded-md border border-border bg-background text-foreground hover:bg-muted"
       >
-        <Plus />
-      </Button>
+        <Plus className="size-3" />
+      </button>
     </div>
   );
 }
