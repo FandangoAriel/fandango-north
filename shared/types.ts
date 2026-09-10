@@ -207,9 +207,8 @@ export function farmLoadItems(farm: Farm, previous: Map<string, LoadItem> = new 
       itemId: item.id,
       kind: "container" as const,
       name: item.customerName || item.containerType,
-      detail: [item.containerType, item.customerId ? `מס׳ ${item.customerId}` : ""]
-        .filter(Boolean)
-        .join(" · "),
+      detail:
+        item.containerType && item.containerType !== item.customerName ? item.containerType : undefined,
       toSupply: 1,
       mark: markFromPrevious(prev),
       haveQty: prev?.haveQty ?? null,

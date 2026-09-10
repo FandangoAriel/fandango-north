@@ -168,7 +168,12 @@ export async function googleGetFarm(farmId: FarmId): Promise<Farm> {
       });
     }
     const customerName = rows[i]?.[meta.container.customerName]?.trim() ?? "";
-    const containerType = rows[i]?.[meta.container.type]?.trim() ?? "";
+    const fromTypeCol = rows[i]?.[meta.container.type]?.trim() ?? "";
+    const fromColJ = rows[i]?.[9]?.trim() ?? "";
+    const containerType =
+      (fromTypeCol && fromTypeCol !== customerName ? fromTypeCol : "") ||
+      (fromColJ && fromColJ !== customerName ? fromColJ : "") ||
+      fromTypeCol;
     if (customerName || containerType) {
       containers.push({
         id: `${farmId}-c-${i}`,

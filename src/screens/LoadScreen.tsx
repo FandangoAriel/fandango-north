@@ -1,10 +1,32 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { Farm, FarmId, LoadItem } from "../../shared/types";
 import { FARM_SHEETS, mergeSubsetOrder, nextLoadMark } from "../../shared/types";
 import { loadWhatsAppText, whatsAppUrl } from "../../shared/summary";
 import { api } from "../api";
-import { CompactQty, ConfirmBar, NoteField, PrimaryButton, Screen, TriMark, WhatsAppButton } from "../ui";
+import {
+  ChipButton,
+  CompactQty,
+  ConfirmBar,
+  NoteField,
+  PrimaryButton,
+  Screen,
+  TriMark,
+  WhatsAppButton,
+} from "../ui";
 import { SortableList, SortableRow } from "../sortable";
+import { useEnterRefresh } from "../useEnterRefresh";
+
+function itemTitle(item: LoadItem) {
+  if (item.kind !== "container" || !item.detail || item.detail === item.name) {
+    return item.name;
+  }
+  return (
+    <>
+      {item.name}{" "}
+      <span className="text-[13px] text-black/55">{item.detail}</span>
+    </>
+  );
+}
 
 function LoadRows({
   items,
@@ -42,7 +64,7 @@ function LoadRows({
           key={item.itemId}
           className="flex items-center gap-1.5 border-b border-black/8 px-2 py-0.5 last:border-b-0"
         >
-          <span className="min-w-0 flex-1 truncate text-[13px] leading-tight">{item.name}</span>
+          <span className="min-w-0 flex-1 truncate text-[13px] leading-tight">{itemTitle(item)}</span>
           {cluster}
         </div>
       );
@@ -52,7 +74,7 @@ function LoadRows({
         {({ grip }) => (
           <div className="flex items-center gap-1.5 border-b border-black/8 px-2 py-0.5 last:border-b-0">
             {grip}
-            <span className="min-w-0 flex-1 truncate text-[13px] leading-tight">{item.name}</span>
+            <span className="min-w-0 flex-1 truncate text-[13px] leading-tight">{itemTitle(item)}</span>
             {cluster}
           </div>
         )}
@@ -88,27 +110,36 @@ export function LoadScreen({
   const [warn, setWarn] = useState("");
   const [saved, setSaved] = useState(false);
 
-  function loadList() {
+  function loadList(keepMarks = false) {
     return api<{ items: LoadItem[]; equipmentIds?: string[]; demo: boolean }>(`/api/load?farm=${farmId}`).then(
       (data) => {
-        setItems(
-          data.items.map((item) => ({
-            ...item,
-            mark: item.mark ?? "unset",
-            haveQty: item.haveQty ?? null,
-          })),
+        setItems((current) => {
+          const prev = new Map(current.map((item) => [item.itemId, item]));
+          return data.items.map((item) => {
+            const old = keepMarks ? prev.get(item.itemId) : undefined;
+            return {
+              ...item,
+              mark: old?.mark ?? item.mark ?? "unset",
+              haveQty: old?.haveQty ?? item.haveQty ?? null,
+            };
+          });
+        });
+        setEquipmentIds(
+          data.equipmentIds ?? data.items.filter((item) => item.kind === "stock").map((item) => item.itemId),
         );
-        setEquipmentIds(data.equipmentIds ?? data.items.filter((item) => item.kind === "stock").map((item) => item.itemId));
         setDemo(data.demo);
       },
     );
   }
 
-  useEffect(() => {
-    loadList()
-      .catch(() => setError("לא הצלחנו לטעון את רשימת ההעמסה"))
-      .finally(() => setLoading(false));
-  }, [farmId]);
+  useEnterRefresh(
+    () =>
+      loadList(false)
+        .catch(() => setError("לא הצלחנו לטעון את רשימת ההעמסה"))
+        .finally(() => setLoading(false)),
+    [farmId],
+    () => loadList(true).catch(() => setError("לא הצלחנו לטעון את רשימת ההעמסה")),
+  );
 
   const markedCount = items.filter((item) => item.mark !== "unset").length;
   const containers = items.filter((item) => item.kind === "container");
@@ -215,13 +246,13 @@ export function LoadScreen({
         </div>
       ) : (
         <>
-          <div className="flex items-center justify-between text-[12px] text-black/60">
+          <div className="flex items-center justify-between gap-2 text-[12px] text-black/60">
             <span>
               סומנו {markedCount} מתוך {items.length}
             </span>
-            <button type="button" className="text-[#3d6b4a]" onClick={() => loadList().catch(() => setError("הרענון נכשל"))}>
+            <ChipButton onClick={() => loadList(true).catch(() => setError("הרענון נכשל"))}>
               רענון מהגיליון
-            </button>
+            </ChipButton>
           </div>
           {containers.length > 0 && (
             <section>

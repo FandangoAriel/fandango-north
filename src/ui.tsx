@@ -62,6 +62,30 @@ export function PrimaryButton({
   );
 }
 
+export function ChipButton({
+  children,
+  onClick,
+  active,
+}: {
+  children: ReactNode;
+  onClick?: () => void;
+  active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`min-h-8 rounded-lg border px-2.5 text-[12px] font-medium ${
+        active
+          ? "border-[#3d6b4a] bg-[#3d6b4a] text-white"
+          : "border-[#3d6b4a] bg-white text-[#3d6b4a]"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function SecondaryButton({
   children,
   onClick,

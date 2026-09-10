@@ -36,7 +36,7 @@ export function loadWhatsAppText(
             : item.mark === "partial"
               ? `חלקי${item.haveQty != null ? ` ${item.haveQty}` : ""}`
               : "לא סומן";
-      lines.push(`${item.name} — ${status}`);
+      lines.push(`${item.name}${item.detail ? ` · ${item.detail}` : ""} — ${status}`);
     }
     lines.push("");
   }

@@ -1,9 +1,10 @@
 import { Pencil } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { Farm, FarmId, ReportRecord, StockUpdate } from "../../shared/types";
 import { api } from "../api";
-import { CompactQty, ConfirmBar, NoteField, PrimaryButton, Screen } from "../ui";
+import { CompactQty, ConfirmBar, ChipButton, NoteField, PrimaryButton, Screen } from "../ui";
 import { SortableList, SortableRow } from "../sortable";
+import { useEnterRefresh } from "../useEnterRefresh";
 
 const ROW = "grid grid-cols-[18px_minmax(0,1fr)_4.75rem_3.25rem] items-center gap-x-1 border-b border-black/8 px-1 py-0.5";
 
@@ -56,12 +57,21 @@ export function ReportScreen({
     });
   }
 
-  useEffect(() => {
-    loadFarm(true).catch(() => setError("לא הצלחנו לטעון את המלאי"));
-    api<{ reports: ReportRecord[] }>(`/api/reports?farm=${farmId}`)
-      .then((data) => setReports(data.reports))
-      .catch(() => setReports([]));
-  }, [farmId]);
+  useEnterRefresh(
+    () => {
+      loadFarm(true).catch(() => setError("לא הצלחנו לטעון את המלאי"));
+      api<{ reports: ReportRecord[] }>(`/api/reports?farm=${farmId}`)
+        .then((data) => setReports(data.reports))
+        .catch(() => setReports([]));
+    },
+    [farmId],
+    () => {
+      loadFarm(false).catch(() => setError("לא הצלחנו לטעון את המלאי"));
+      api<{ reports: ReportRecord[] }>(`/api/reports?farm=${farmId}`)
+        .then((data) => setReports(data.reports))
+        .catch(() => setReports([]));
+    },
+  );
 
   function applyReport(report: ReportRecord) {
     if (!farm) return;
@@ -181,16 +191,14 @@ export function ReportScreen({
       {message && (
         <p className="rounded-md bg-emerald-50 px-2 py-1 text-[12px] text-emerald-800">{message}</p>
       )}
-      <div className="flex flex-wrap gap-2 text-[12px]">
-        <button type="button" className="text-[#3d6b4a]" onClick={() => setShowHistory((open) => !open)}>
+      <div className="flex flex-wrap gap-2">
+        <ChipButton active={showHistory} onClick={() => setShowHistory((open) => !open)}>
           עריכת דיווח קודם
-        </button>
-        <button type="button" className="text-[#3d6b4a]" onClick={fillFromSheet}>
-          מילוי לפי הגיליון
-        </button>
-        <button type="button" className="text-[#3d6b4a]" onClick={() => loadFarm(false).catch(() => setError("הרענון נכשל"))}>
+        </ChipButton>
+        <ChipButton onClick={fillFromSheet}>מילוי לפי הגיליון</ChipButton>
+        <ChipButton onClick={() => loadFarm(false).catch(() => setError("הרענון נכשל"))}>
           רענון מהגיליון
-        </button>
+        </ChipButton>
       </div>
       {showHistory && (
         <div className="rounded-lg bg-white px-2 py-1">
