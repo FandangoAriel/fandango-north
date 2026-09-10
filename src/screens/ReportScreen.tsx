@@ -6,7 +6,7 @@ import { CompactQty, ConfirmBar, ChipButton, NoteField, PrimaryButton, Screen } 
 import { SortableList, SortableRow } from "../sortable";
 import { useEnterRefresh } from "../useEnterRefresh";
 
-const ROW = "grid grid-cols-[18px_minmax(0,1fr)_4.75rem_3.25rem] items-center gap-x-1 border-b border-black/8 px-1 py-0.5";
+const ROW = "grid grid-cols-[24px_minmax(0,1fr)_4.75rem_3.25rem] items-center gap-x-1 border-b border-black/8 px-1 py-0.5";
 
 function formatWhen(iso: string) {
   const date = new Date(iso);

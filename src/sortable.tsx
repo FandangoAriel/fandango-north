@@ -8,7 +8,6 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 
 export function SortableList({
@@ -61,11 +60,13 @@ export function SortableRow({
     <button
       type="button"
       aria-label="גרירת פריט"
-      className="flex size-[18px] shrink-0 items-center justify-center text-black/35"
+      className="flex h-7 w-6 shrink-0 flex-col items-center justify-center gap-[3px] rounded-md text-[#3d6b4a]"
       {...attributes}
       {...listeners}
     >
-      <GripVertical size={14} />
+      <span className="block h-[2px] w-3.5 rounded-full bg-current" />
+      <span className="block h-[2px] w-3.5 rounded-full bg-current" />
+      <span className="block h-[2px] w-3.5 rounded-full bg-current" />
     </button>
   );
   return (
