@@ -22,14 +22,14 @@ export function LoginScreen({ onPick }: { onPick: (name: string) => void }) {
 
   if (loading) {
     return (
-      <Screen title="כניסה">
+      <Screen title="כניסה" brand>
         <p className="text-black/60">טוען עובדים…</p>
       </Screen>
     );
   }
 
   return (
-    <Screen title="מי נכנס?" subtitle="בחרו את השם שלכם. עד 10 עובדים בצוות." demo={demo}>
+    <Screen title="מי נכנס?" subtitle="בחרו את השם שלכם. עד 10 עובדים בצוות." demo={demo} brand>
       {error && <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
       {users.length === 0 && <p className="text-black/60">אין משתמשים ברשימה.</p>}
       <div className="grid gap-2">

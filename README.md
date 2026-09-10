@@ -32,13 +32,18 @@ npx netlify-cli deploy --prod
 
 או חיבור הריפו לנטליפיי (build command: `npm run build`, publish: `dist`).
 
-## חיבור לגיליון החי
+## יציאה ממצב דמו (חיבור לגיליון החי)
 
-1. צרו חשבון שירות ב-Google Cloud עם Google Sheets API.
-2. שתפו את הגיליון עם כתובת ה-service account כ-Editor.
-3. הוסיפו בנטליפיי (Site settings → Environment variables):
-   - `SPREADSHEET_ID` — מזהה הגיליון
-   - `GOOGLE_SERVICE_ACCOUNT_JSON` — כל ה-JSON של חשבון השירות
-4. טאב `משתמשים` (עמודה A, עד 10 שמות), טאב `העמסות` ליומן, טאב `דיווחים` לדיווחי מלאי ולהערות העמסה (כולל סימון «ע״י המעמיס»), וטאב `סדר` לסדר הגרירה.
+האפליקציה במצב דמו כל עוד חסר אחד משני המשתנים: `SPREADSHEET_ID` או `GOOGLE_SERVICE_ACCOUNT_JSON`. באתר הפרודקשן מזהה הגיליון כבר מוגדר; מה שחסר הוא מפתח חשבון השירות של גוגל. בלי זה דיווחים והעמסות לא נכתבים לגיליון (בפיתוח הם נשמרים ב־`.data/store.json`).
 
-בלי המשתנים האלה נשמרים דיווחים והעמסות מקומית (`.data/store.json` בפיתוח).
+1. ב-[Google Cloud Console](https://console.cloud.google.com/) צרו פרויקט (או בחרו קיים), הפעילו **Google Sheets API**, ואז **IAM & Admin → Service accounts → Create**.
+2. לחשבון השירות צרו מפתח מסוג JSON והורידו את הקובץ. בתוך ה-JSON יש שדה `client_email` (משהו כמו `...@....iam.gserviceaccount.com`).
+3. בגיליון [ציוד לחוות פאנדנגו בצפון](https://docs.google.com/spreadsheets/d/1EgL_CEVPJHM3DmPElzR4hPJGGGMo4yQIHrucKhdN6XI/edit) לחצו שיתוף, והוסיפו את כתובת ה-`client_email` כ**עורך**.
+4. בנטליפיי: Site configuration → Environment variables, הגדירו:
+   - `SPREADSHEET_ID` = `1EgL_CEVPJHM3DmPElzR4hPJGGGMo4yQIHrucKhdN6XI` (אם עדיין אין)
+   - `GOOGLE_SERVICE_ACCOUNT_JSON` = **כל תוכן קובץ ה-JSON**, כולל הסוגריים. לא לקצץ ולא להחליף שורות בתוך `private_key`.
+5. אחרי שמירת המשתנים עשו Deploy מחדש (Deploys → Trigger deploy). כשהחיבור מצליח, באנר «מצב דמו» נעלם ממסך הכניסה.
+
+מקומית: העתיקו `.env.example` ל־`.env`, הדביקו את אותו JSON בגרשיים בשורה אחת, והריצו `npm run dev`.
+
+טאבים נדרשים בגיליון: `משתמשים` (עמודה A, עד 10 שמות), `העמסות` ליומן, `דיווחים` לדיווחי מלאי ולהערות העמסה (כולל סימון «ע״י המעמיס»), ו`סדר` לסדר הגרירה.

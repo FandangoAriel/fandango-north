@@ -7,12 +7,14 @@ export function Screen({
   onBack,
   children,
   demo,
+  brand,
 }: {
   title: string;
   subtitle?: string;
   onBack?: () => void;
   children: ReactNode;
   demo?: boolean;
+  brand?: boolean;
 }) {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col overflow-x-hidden overscroll-y-contain px-3 pb-4 pt-[max(0.5rem,env(safe-area-inset-top))]">
@@ -25,6 +27,15 @@ export function Screen({
           >
             חזרה
           </button>
+        )}
+        {brand && (
+          <img
+            src="/icon-192.png"
+            alt="פאנדנגו"
+            width={72}
+            height={72}
+            className="mb-2 h-[72px] w-[72px] rounded-[1.15rem] shadow-sm"
+          />
         )}
         <h1 className="text-lg font-bold leading-tight">{title}</h1>
         {subtitle && <p className="text-[12px] leading-snug text-black/60">{subtitle}</p>}
