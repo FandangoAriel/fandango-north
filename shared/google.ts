@@ -1,6 +1,6 @@
 import { JWT } from "google-auth-library";
-import type { EquipmentItem, Farm, FarmId, LoadItem, LoadRecord } from "./types";
-import { FARM_SHEETS, todayIso, toSupply } from "./types";
+import type { EquipmentItem, Farm, FarmId, LabeledContainer, LoadItem, LoadRecord } from "./types";
+import { FARM_SHEETS, farmLoadItems, isSuppliedFlag, todayIso } from "./types";
 
 const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
 
@@ -80,7 +80,7 @@ export async function googleListUsers(): Promise<string[]> {
 
 export async function googleGetFarm(farmId: FarmId): Promise<Farm> {
   const meta = FARM_SHEETS[farmId];
-  const data = await sheetsGet(`'${meta.sheet}'!A1:C80`);
+  const data = await sheetsGet(`'${meta.sheet}'!A1:M80`);
   const rows = data.values ?? [];
   const updatedRaw = rows[0]?.[2] ?? todayIso();
   let updatedAt = todayIso();
@@ -91,17 +91,30 @@ export async function googleGetFarm(farmId: FarmId): Promise<Farm> {
     }
   }
   const equipment: EquipmentItem[] = [];
+  const containers: LabeledContainer[] = [];
   for (let i = meta.startRow - 1; i < rows.length; i += 1) {
     const name = rows[i]?.[0]?.trim();
-    if (!name) continue;
-    equipment.push({
-      id: `${farmId}-${i}`,
-      name,
-      actual: parseNumber(rows[i]?.[1]),
-      maxStock: parseNumber(rows[i]?.[2]),
-    });
+    if (name) {
+      equipment.push({
+        id: `${farmId}-${i}`,
+        name,
+        actual: parseNumber(rows[i]?.[1]),
+        maxStock: parseNumber(rows[i]?.[2]),
+      });
+    }
+    const customerName = rows[i]?.[meta.container.customerName]?.trim() ?? "";
+    const containerType = rows[i]?.[meta.container.type]?.trim() ?? "";
+    if (customerName || containerType) {
+      containers.push({
+        id: `${farmId}-c-${i}`,
+        customerId: rows[i]?.[meta.container.customerId]?.trim() ?? "",
+        customerName,
+        containerType,
+        supplied: isSuppliedFlag(rows[i]?.[meta.container.supplied]),
+      });
+    }
   }
-  return { id: farmId, name: meta.name, updatedAt, equipment };
+  return { id: farmId, name: meta.name, updatedAt, equipment, containers };
 }
 
 export async function googleReportStock(
@@ -145,15 +158,7 @@ export async function googleGetLoad(farmId: FarmId): Promise<LoadItem[]> {
   } catch {
     // tab may not exist yet
   }
-  return farm.equipment
-    .filter((item) => toSupply(item) > 0)
-    .map((item) => ({
-      itemId: item.id,
-      name: item.name,
-      toSupply: toSupply(item),
-      loaded: checked.has(item.name) || checked.has(item.id),
-    }))
-    .sort((a, b) => b.toSupply - a.toSupply);
+  return farmLoadItems(farm, checked);
 }
 
 export async function googleSaveLoad(

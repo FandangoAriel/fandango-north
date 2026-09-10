@@ -43,6 +43,29 @@ export function createSeedStore(): AppStore {
           { id: "bh-tacho", name: "טכוגרף", actual: 0, maxStock: 2 },
           { id: "bh-spray", name: "ספריי למנעולים", actual: 0, maxStock: 0 },
         ],
+        containers: [
+          {
+            id: "bh-c-30251",
+            customerId: "30251",
+            customerName: "מקדונלדס - עמיעד",
+            containerType: "מיכל ריקון מקדונלדס צר 31",
+            supplied: false,
+          },
+          {
+            id: "bh-c-36583",
+            customerId: "36583",
+            customerName: "מיכל מרכזי - השוק הטורקי",
+            containerType: "מיכל 600",
+            supplied: false,
+          },
+          {
+            id: "bh-c-32906",
+            customerId: "32906",
+            customerName: "אסדו סטור - טמרה",
+            containerType: "מיכל 601 גלגלים",
+            supplied: false,
+          },
+        ],
       },
       {
         id: "lehavot-haviva",
@@ -78,6 +101,15 @@ export function createSeedStore(): AppStore {
           { id: "lh-wipes", name: "מגבונים עם אלכוג׳ל", actual: 4, maxStock: 4 },
           { id: "lh-tacho", name: "טכוגרף", actual: 0, maxStock: 1 },
         ],
+        containers: [
+          {
+            id: "lh-c-36588",
+            customerId: "36588",
+            customerName: "בורגראנץ׳ - נתניה",
+            containerType: "עגלה ל 2 דליים",
+            supplied: false,
+          },
+        ],
       },
       {
         id: "kfar-hasidim",
@@ -105,6 +137,7 @@ export function createSeedStore(): AppStore {
           { id: "kh-lids", name: "מיכסים לחביות", actual: 0, maxStock: 10 },
           { id: "kh-rags", name: "סחבות", actual: 2, maxStock: 3 },
         ],
+        containers: [],
       },
     ],
   };

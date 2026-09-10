@@ -2,19 +2,28 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createSeedStore } from "./seed";
 import type { AppStore, FarmId, LoadItem, LoadRecord } from "./types";
-import { todayIso, toSupply } from "./types";
+import { farmLoadItems, todayIso } from "./types";
 
 const STORE_PATH = join(process.cwd(), ".data", "store.json");
 
 function readStore(): AppStore {
+  const seed = createSeedStore();
   try {
     const raw = readFileSync(STORE_PATH, "utf8");
     const parsed = JSON.parse(raw) as AppStore;
-    if (parsed?.farms?.length && parsed?.users?.length) return parsed;
+    if (!parsed?.farms?.length || !parsed?.users?.length) return seed;
+    parsed.farms = parsed.farms.map((farm) => {
+      const fromSeed = seed.farms.find((item) => item.id === farm.id);
+      return {
+        ...farm,
+        containers: farm.containers ?? fromSeed?.containers ?? [],
+      };
+    });
+    parsed.loads = parsed.loads ?? [];
+    return parsed;
   } catch {
-    // first run or corrupt file
+    return seed;
   }
-  return createSeedStore();
 }
 
 function writeStore(store: AppStore) {
@@ -57,15 +66,7 @@ export function getLoadChecklist(farmId: FarmId): LoadItem[] {
   const checked = new Set(
     (latest?.items ?? []).filter((item) => item.loaded).map((item) => item.itemId),
   );
-  return farm.equipment
-    .filter((item) => toSupply(item) > 0)
-    .map((item) => ({
-      itemId: item.id,
-      name: item.name,
-      toSupply: toSupply(item),
-      loaded: checked.has(item.id),
-    }))
-    .sort((a, b) => b.toSupply - a.toSupply);
+  return farmLoadItems(farm, checked);
 }
 
 export function saveLoad(
@@ -76,15 +77,7 @@ export function saveLoad(
   const store = readStore();
   const farm = store.farms.find((item) => item.id === farmId);
   if (!farm) throw new Error("farm_not_found");
-  const loaded = new Set(loadedIds);
-  const items: LoadItem[] = farm.equipment
-    .filter((item) => toSupply(item) > 0)
-    .map((item) => ({
-      itemId: item.id,
-      name: item.name,
-      toSupply: toSupply(item),
-      loaded: loaded.has(item.id),
-    }));
+  const items = farmLoadItems(farm, new Set(loadedIds));
   const record: LoadRecord = {
     id: crypto.randomUUID(),
     at: new Date().toISOString(),
