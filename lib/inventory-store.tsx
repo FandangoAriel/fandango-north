@@ -22,7 +22,6 @@ const STORAGE_KEY = "fandango-north-inventory-v1";
 
 type InventoryContextValue = {
   state: InventoryState;
-  hydrated: boolean;
   updateActual: (siteId: SiteId, itemId: string, actual: number) => void;
   updateMax: (siteId: SiteId, itemId: string, maxStock: number) => void;
   fillItem: (siteId: SiteId, itemId: string) => void;
@@ -98,16 +97,7 @@ function mapSite(state: InventoryState, siteId: SiteId, mapper: (site: Site) => 
   };
 }
 
-function useHydrated() {
-  return useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
-  );
-}
-
 export function InventoryProvider({ children }: { children: ReactNode }) {
-  const hydrated = useHydrated();
   const state = useSyncExternalStore(subscribe, getClientSnapshot, getServerSnapshot);
 
   const updateActual = useCallback((siteId: SiteId, itemId: string, actual: number) => {
@@ -225,7 +215,6 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       state,
-      hydrated,
       updateActual,
       updateMax,
       fillItem,
@@ -238,7 +227,6 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
     }),
     [
       state,
-      hydrated,
       updateActual,
       updateMax,
       fillItem,

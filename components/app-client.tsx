@@ -23,7 +23,7 @@ import type { SiteId } from "@/lib/types";
 type TabId = "overview" | SiteId | "supply";
 
 export function AppClient() {
-  const { state, hydrated, reset } = useInventory();
+  const { state, reset } = useInventory();
   const [tab, setTab] = useState<TabId>("overview");
   const [resetOpen, setResetOpen] = useState(false);
 
@@ -31,14 +31,6 @@ export function AppClient() {
     () => Object.fromEntries(state.sites.map((site) => [site.id, site])),
     [state.sites],
   );
-
-  if (!hydrated) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-muted-foreground">
-        טוען את המלאי…
-      </div>
-    );
-  }
 
   return (
     <div className="flex min-h-full flex-1 flex-col">
