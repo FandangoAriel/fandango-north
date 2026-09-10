@@ -170,7 +170,7 @@ export async function googleSaveOrder(farmId: FarmId, itemIds: string[]) {
 
 export async function googleGetFarm(farmId: FarmId): Promise<Farm> {
   const meta = FARM_SHEETS[farmId];
-  const data = await sheetsGet(`'${meta.sheet}'!A1:M80`);
+  const data = await sheetsGet(`'${meta.sheet}'!A1:M200`);
   const rows = data.values ?? [];
   const updatedRaw = rows[0]?.[2] ?? todayIso();
   let updatedAt = todayIso();
@@ -232,16 +232,21 @@ export async function googleReportStock(
 ) {
   const farm = await googleGetFarm(farmId);
   const meta = FARM_SHEETS[farmId];
-  const data = await sheetsGet(`'${meta.sheet}'!A${meta.startRow}:C80`);
+  const data = await sheetsGet(`'${meta.sheet}'!A${meta.startRow}:C200`);
   const rows = data.values ?? [];
   const byName = new Map<string, StockUpdate>();
   for (const item of updates) {
     const found = farm.equipment.find((row) => row.id === item.id);
-    byName.set(item.name || found?.name || item.id, item);
+    const name = (item.name || found?.name || "").trim();
+    if (name) byName.set(name, item);
   }
+  const existingNames = new Set<string>();
+  let lastNamed = -1;
   for (let i = 0; i < rows.length; i += 1) {
     const name = rows[i]?.[0]?.trim();
-    if (!name || !byName.has(name)) continue;
+    if (!name) continue;
+    existingNames.add(name);
+    lastNamed = i;
     const update = byName.get(name);
     if (!update) continue;
     const rowNumber = meta.startRow + i;
@@ -252,6 +257,19 @@ export async function googleReportStock(
     } else if (update.maxStock !== undefined) {
       await sheetsUpdate(`'${meta.sheet}'!C${rowNumber}`, [[update.maxStock]]);
     }
+  }
+  const added: (string | number)[][] = [];
+  for (const item of updates) {
+    const found = farm.equipment.find((row) => row.id === item.id);
+    const name = (item.name || found?.name || "").trim();
+    if (!name || existingNames.has(name)) continue;
+    if (!item.isNew && found) continue;
+    existingNames.add(name);
+    added.push([name, item.actual ?? 0, item.maxStock ?? item.actual ?? 0]);
+  }
+  if (added.length) {
+    const start = meta.startRow + lastNamed + 1;
+    await sheetsUpdate(`'${meta.sheet}'!A${start}:C${start + added.length - 1}`, added);
   }
   await sheetsUpdate(`'${meta.sheet}'!C1`, [[todayIso()]]);
   try {

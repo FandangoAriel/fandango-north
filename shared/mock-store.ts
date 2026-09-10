@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createSeedStore } from "./seed";
 import type { AppStore, FarmId, LoadItem, LoadMark, LoadRecord, ReportRecord, StockUpdate } from "./types";
-import { applyItemOrder, farmLoadItems, todayIso } from "./types";
+import { applyItemOrder, farmLoadItems, isNewEquipmentId, todayIso } from "./types";
 
 const STORE_PATH = join(process.cwd(), ".data", "store.json");
 
@@ -85,17 +85,46 @@ export function reportStock(
   const store = readStore();
   const farm = store.farms.find((item) => item.id === farmId);
   if (!farm) throw new Error("farm_not_found");
+  const usedIds = new Set(farm.equipment.map((row) => row.id));
   for (const update of updates) {
+    const name = update.name?.trim();
     const item =
-      farm.equipment.find((row) => row.id === update.id) ??
-      farm.equipment.find((row) => row.name === update.name);
-    if (!item) continue;
-    if (update.actual !== undefined && Number.isFinite(Number(update.actual))) {
-      item.actual = Math.max(0, Math.round(Number(update.actual)));
+      (!isNewEquipmentId(update.id)
+        ? farm.equipment.find((row) => row.id === update.id)
+        : undefined) ??
+      (name ? farm.equipment.find((row) => row.name === name) : undefined);
+    const actual =
+      update.actual !== undefined && Number.isFinite(Number(update.actual))
+        ? Math.max(0, Math.round(Number(update.actual)))
+        : undefined;
+    const maxStock =
+      update.maxStock !== undefined && Number.isFinite(Number(update.maxStock))
+        ? Math.max(0, Math.round(Number(update.maxStock)))
+        : undefined;
+    if (!item) {
+      if (!name) continue;
+      let id = `${farmId}:${name}`;
+      let n = 2;
+      while (usedIds.has(id)) {
+        id = `${farmId}:${name}:${n}`;
+        n += 1;
+      }
+      usedIds.add(id);
+      const nextActual = actual ?? 0;
+      const nextMax = maxStock ?? nextActual;
+      farm.equipment.push({
+        id,
+        name,
+        actual: nextActual,
+        maxStock: nextMax,
+        toComplete: Math.max(0, nextMax - nextActual),
+      });
+      farm.itemOrder = [...(farm.itemOrder ?? farm.equipment.slice(0, -1).map((row) => row.id)), id];
+      continue;
     }
-    if (update.maxStock !== undefined && Number.isFinite(Number(update.maxStock))) {
-      item.maxStock = Math.max(0, Math.round(Number(update.maxStock)));
-    }
+    if (actual !== undefined) item.actual = actual;
+    if (maxStock !== undefined) item.maxStock = maxStock;
+    item.toComplete = Math.max(0, item.maxStock - item.actual);
   }
   farm.updatedAt = todayIso();
   store.reports.push({

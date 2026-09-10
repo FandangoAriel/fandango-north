@@ -138,6 +138,29 @@ export function CompactQty({
   );
 }
 
+export function CompactName({
+  value,
+  onChange,
+  label,
+  autoFocus,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  label: string;
+  autoFocus?: boolean;
+}) {
+  return (
+    <input
+      aria-label={label}
+      value={value}
+      autoFocus={autoFocus}
+      placeholder="שם הפריט"
+      onChange={(event) => onChange(event.target.value)}
+      className="h-7 min-w-0 w-full rounded-md border border-black/15 bg-white px-1.5 text-[13px] leading-tight"
+    />
+  );
+}
+
 export function ConfirmBar({
   text,
   onCancel,

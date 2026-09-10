@@ -1,8 +1,9 @@
-import { Pencil } from "lucide-react";
+import { Pencil, Plus, X } from "lucide-react";
 import { useState } from "react";
-import type { Farm, FarmId, ReportRecord, StockUpdate } from "../../shared/types";
+import type { EquipmentItem, Farm, FarmId, ReportRecord, StockUpdate } from "../../shared/types";
+import { isNewEquipmentId } from "../../shared/types";
 import { api } from "../api";
-import { CompactQty, ConfirmBar, ChipButton, NoteField, PrimaryButton, Screen } from "../ui";
+import { CompactName, CompactQty, ConfirmBar, ChipButton, NoteField, PrimaryButton, Screen } from "../ui";
 import { SortableList, SortableRow } from "../sortable";
 import { useEnterRefresh } from "../useEnterRefresh";
 
@@ -42,9 +43,21 @@ export function ReportScreen({
   const [editingReport, setEditingReport] = useState<ReportRecord | null>(null);
   const [warn, setWarn] = useState("");
 
+  const [focusNew, setFocusNew] = useState<string | null>(null);
+
+  function mergeNewItems(next: Farm, previous: Farm | null): Farm {
+    const extras = previous?.equipment.filter((item) => isNewEquipmentId(item.id)) ?? [];
+    if (!extras.length) return next;
+    return {
+      ...next,
+      equipment: [...next.equipment, ...extras],
+      itemOrder: [...(next.itemOrder ?? next.equipment.map((item) => item.id)), ...extras.map((item) => item.id)],
+    };
+  }
+
   function loadFarm(resetDrafts: boolean) {
     return api<{ farm: Farm; demo: boolean }>(`/api/inventory?farm=${farmId}`).then((data) => {
-      setFarm(data.farm);
+      setFarm((previous) => (resetDrafts ? data.farm : mergeNewItems(data.farm, previous)));
       setDemo(data.demo);
       if (resetDrafts) {
         setActualDraft({});
@@ -53,6 +66,7 @@ export function ReportScreen({
         setNote("");
         setEditingReport(null);
         setWarn("");
+        setFocusNew(null);
       }
     });
   }
@@ -97,21 +111,75 @@ export function ReportScreen({
   function fillFromSheet() {
     if (!farm) return;
     const next: Record<string, string> = {};
-    for (const item of farm.equipment) next[item.id] = String(item.actual);
-    setActualDraft(next);
+    for (const item of farm.equipment) {
+      if (isNewEquipmentId(item.id)) continue;
+      next[item.id] = String(item.actual);
+    }
+    setActualDraft((current) => ({ ...current, ...next }));
     setEditingReport(null);
     setMessage("מולא לפי המלאי שבגיליון. אפשר לערוך ולשמור.");
   }
 
+  function addItem() {
+    if (!farm) return;
+    const id = `new:${crypto.randomUUID()}`;
+    const item: EquipmentItem = { id, name: "", actual: 0, maxStock: 0, toComplete: 0 };
+    setFarm({
+      ...farm,
+      equipment: [...farm.equipment, item],
+      itemOrder: [...(farm.itemOrder ?? farm.equipment.map((row) => row.id)), id],
+    });
+    setMaxDraft((current) => ({ ...current, [id]: "" }));
+    setActualDraft((current) => ({ ...current, [id]: "" }));
+    setFocusNew(id);
+    setWarn("");
+    setMessage("");
+  }
+
+  function removeNewItem(id: string) {
+    if (!farm) return;
+    setFarm({
+      ...farm,
+      equipment: farm.equipment.filter((item) => item.id !== id),
+      itemOrder: farm.itemOrder?.filter((itemId) => itemId !== id),
+    });
+    setActualDraft((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+    setMaxDraft((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+    if (editingMax === id) setEditingMax(null);
+    if (focusNew === id) setFocusNew(null);
+  }
+
+  function renameNewItem(id: string, name: string) {
+    if (!farm) return;
+    setFarm({
+      ...farm,
+      equipment: farm.equipment.map((item) => (item.id === id ? { ...item, name } : item)),
+    });
+  }
+
   async function reorder(ids: string[]) {
     if (!farm) return;
-    setFarm({ ...farm, equipment: ids.map((id) => farm.equipment.find((item) => item.id === id)!).filter(Boolean), itemOrder: ids });
+    const extraIds = farm.equipment.filter((item) => isNewEquipmentId(item.id)).map((item) => item.id);
+    const orderedIds = [...ids, ...extraIds];
+    setFarm({
+      ...farm,
+      equipment: orderedIds.map((id) => farm.equipment.find((item) => item.id === id)!).filter(Boolean),
+      itemOrder: orderedIds,
+    });
     try {
       const data = await api<{ farm: Farm; demo: boolean }>("/api/order", {
         method: "POST",
         body: JSON.stringify({ farmId, itemIds: ids }),
       });
-      setFarm(data.farm);
+      setFarm(mergeNewItems(data.farm, farm));
       setDemo(data.demo);
     } catch {
       setError("לא הצלחנו לשמור את הסדר");
@@ -120,6 +188,17 @@ export function ReportScreen({
 
   async function save() {
     if (!farm) return;
+    setError("");
+    const added = farm.equipment.filter((item) => isNewEquipmentId(item.id));
+    if (added.some((item) => !item.name.trim())) {
+      setError("כתבו שם לפריט החדש, או מחקו אותו");
+      return;
+    }
+    const names = farm.equipment.map((item) => item.name.trim()).filter(Boolean);
+    if (new Set(names).size !== names.length) {
+      setError("יש שני פריטים עם אותו שם");
+      return;
+    }
     const missing = farm.equipment.filter((item) => !actualDraft[item.id]?.length);
     if (missing.length && !warn) {
       setWarn(`לא דווח מלאי קיים ב־${missing.length} פריטים. לשמור בכל זאת?`);
@@ -132,20 +211,25 @@ export function ReportScreen({
     try {
       const items: StockUpdate[] = [];
       for (const item of farm.equipment) {
-        const update: StockUpdate = { id: item.id, name: item.name };
-        let changed = false;
+        const isNew = isNewEquipmentId(item.id);
+        const update: StockUpdate = { id: item.id, name: item.name.trim(), isNew: isNew || undefined };
+        let changed = isNew;
         const actualRaw = actualDraft[item.id];
         if (actualRaw !== undefined && actualRaw !== "") {
           update.actual = Number(actualRaw);
           changed = true;
+        } else if (isNew) {
+          update.actual = 0;
         }
         const maxRaw = maxDraft[item.id];
         if (maxRaw !== undefined && maxRaw !== "") {
           const nextMax = Number(maxRaw);
-          if (nextMax !== item.maxStock) {
+          if (isNew || nextMax !== item.maxStock) {
             update.maxStock = nextMax;
             changed = true;
           }
+        } else if (isNew) {
+          update.maxStock = update.actual ?? 0;
         }
         if (changed) items.push(update);
       }
@@ -158,9 +242,19 @@ export function ReportScreen({
       setActualDraft({});
       setMaxDraft({});
       setEditingMax(null);
+      setFocusNew(null);
       setNote("");
       setEditingReport(null);
-      setMessage(items.length || note.trim() ? "הדיווח נשמר" : "אין כמויות לדיווח");
+      const addedCount = items.filter((item) => item.isNew).length;
+      setMessage(
+        addedCount
+          ? addedCount === 1
+            ? "הפריט נוסף והדיווח נשמר"
+            : `${addedCount} פריטים נוספו והדיווח נשמר`
+          : items.length || note.trim()
+            ? "הדיווח נשמר"
+            : "אין כמויות לדיווח",
+      );
       const listed = await api<{ reports: ReportRecord[] }>(`/api/reports?farm=${farmId}`);
       setReports(listed.reports);
     } catch {
@@ -178,7 +272,9 @@ export function ReportScreen({
     );
   }
 
-  const ids = farm?.equipment.map((item) => item.id) ?? [];
+  const existing = farm?.equipment.filter((item) => !isNewEquipmentId(item.id)) ?? [];
+  const added = farm?.equipment.filter((item) => isNewEquipmentId(item.id)) ?? [];
+  const ids = existing.map((item) => item.id);
 
   return (
     <Screen
@@ -234,7 +330,7 @@ export function ReportScreen({
           <span className="text-center leading-tight">מלאי קיים</span>
         </div>
         <SortableList ids={ids} onReorder={reorder}>
-          {farm?.equipment.map((item) => {
+          {existing.map((item) => {
             const maxValue = maxDraft[item.id] ?? String(item.maxStock);
             const editing = editingMax === item.id;
             return (
@@ -288,6 +384,49 @@ export function ReportScreen({
             );
           })}
         </SortableList>
+        {added.map((item) => (
+          <div key={item.id} className={ROW}>
+            <button
+              type="button"
+              aria-label="מחיקת פריט חדש"
+              onClick={() => removeNewItem(item.id)}
+              className="flex size-6 shrink-0 items-center justify-center rounded-md text-[#9f1239]"
+            >
+              <X size={14} strokeWidth={2.4} />
+            </button>
+            <CompactName
+              label="שם פריט חדש"
+              value={item.name}
+              autoFocus={focusNew === item.id}
+              onChange={(value) => renameNewItem(item.id, value)}
+            />
+            <div className="flex items-center justify-center">
+              <CompactQty
+                label={`מקס של ${item.name || "פריט חדש"}`}
+                value={maxDraft[item.id] ?? ""}
+                onChange={(value) => setMaxDraft((current) => ({ ...current, [item.id]: value }))}
+              />
+            </div>
+            <div className="flex justify-center">
+              <CompactQty
+                label={`מלאי קיים של ${item.name || "פריט חדש"}`}
+                value={actualDraft[item.id] ?? ""}
+                onChange={(value) => {
+                  setWarn("");
+                  setActualDraft((current) => ({ ...current, [item.id]: value }));
+                }}
+              />
+            </div>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={addItem}
+          className="flex min-h-10 w-full items-center justify-center gap-1 border-t border-black/8 text-[13px] font-medium text-[#3d6b4a]"
+        >
+          <Plus size={16} strokeWidth={2.4} />
+          הוספת פריט
+        </button>
       </div>
       <NoteField value={note} onChange={setNote} label="הערה" />
       {warn && (

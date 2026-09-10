@@ -53,6 +53,11 @@ export interface StockUpdate {
   name?: string;
   actual?: number;
   maxStock?: number;
+  isNew?: boolean;
+}
+
+export function isNewEquipmentId(id: string) {
+  return id.startsWith("new:");
 }
 
 export interface ReportRecord {
