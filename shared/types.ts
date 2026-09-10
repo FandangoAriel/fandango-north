@@ -25,6 +25,7 @@ export interface Farm {
   updatedAt: string;
   equipment: EquipmentItem[];
   containers: LabeledContainer[];
+  itemOrder?: string[];
 }
 
 export interface LoadItem {
@@ -155,6 +156,50 @@ function markFromPrevious(prev: LoadItem | undefined): LoadMark {
   return "unset";
 }
 
+export function applyItemOrder<T extends { id?: string; itemId?: string; name: string }>(
+  items: T[],
+  order: string[] | undefined,
+): T[] {
+  if (!order?.length) return items;
+  const byKey = new Map<string, T>();
+  for (const item of items) {
+    if (item.id) byKey.set(item.id, item);
+    if (item.itemId) byKey.set(item.itemId, item);
+    byKey.set(item.name, item);
+  }
+  const used = new Set<T>();
+  const next: T[] = [];
+  for (const key of order) {
+    const item = byKey.get(key);
+    if (item && !used.has(item)) {
+      next.push(item);
+      used.add(item);
+    }
+  }
+  for (const item of items) {
+    if (!used.has(item)) next.push(item);
+  }
+  return next;
+}
+
+export function mergeSubsetOrder(fullOrder: string[], subsetOrder: string[]): string[] {
+  const subset = new Set(subsetOrder);
+  const next: string[] = [];
+  let i = 0;
+  for (const id of fullOrder) {
+    if (subset.has(id)) {
+      if (i < subsetOrder.length) next.push(subsetOrder[i++]);
+    } else {
+      next.push(id);
+    }
+  }
+  while (i < subsetOrder.length) {
+    if (!next.includes(subsetOrder[i])) next.push(subsetOrder[i]);
+    i += 1;
+  }
+  return next;
+}
+
 export function farmLoadItems(farm: Farm, previous: Map<string, LoadItem> = new Map()): LoadItem[] {
   const containers: LoadItem[] = pendingContainers(farm).map((item) => {
     const prev = previous.get(item.id) ?? previous.get(item.customerName);
@@ -170,20 +215,20 @@ export function farmLoadItems(farm: Farm, previous: Map<string, LoadItem> = new 
       haveQty: prev?.haveQty ?? null,
     };
   });
-  const stock: LoadItem[] = farm.equipment
-    .filter((item) => toCompleteOf(item) > 0)
-    .map((item) => {
-      const prev = previous.get(item.id) ?? previous.get(item.name);
-      return {
-        itemId: item.id,
-        kind: "stock" as const,
-        name: item.name,
-        toSupply: toCompleteOf(item),
-        mark: markFromPrevious(prev),
-        haveQty: prev?.haveQty ?? null,
-      };
-    })
-    .sort((a, b) => b.toSupply - a.toSupply);
+  const stock: LoadItem[] = applyItemOrder(
+    farm.equipment.filter((item) => toCompleteOf(item) > 0),
+    farm.itemOrder,
+  ).map((item) => {
+    const prev = previous.get(item.id) ?? previous.get(item.name);
+    return {
+      itemId: item.id,
+      kind: "stock" as const,
+      name: item.name,
+      toSupply: toCompleteOf(item),
+      mark: markFromPrevious(prev),
+      haveQty: prev?.haveQty ?? null,
+    };
+  });
   return [...containers, ...stock];
 }
 

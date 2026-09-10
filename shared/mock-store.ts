@@ -1,8 +1,8 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createSeedStore } from "./seed";
-import type { AppStore, FarmId, LoadItem, LoadMark, LoadRecord, StockUpdate } from "./types";
-import { farmLoadItems, previousLoadMap, todayIso } from "./types";
+import type { AppStore, FarmId, LoadItem, LoadMark, LoadRecord, ReportRecord, StockUpdate } from "./types";
+import { applyItemOrder, farmLoadItems, todayIso } from "./types";
 
 const STORE_PATH = join(process.cwd(), ".data", "store.json");
 
@@ -17,16 +17,20 @@ function readStore(): AppStore {
       return {
         ...farm,
         containers: farm.containers ?? fromSeed?.containers ?? [],
-        equipment: (farm.equipment ?? []).map((item) => {
-          const seeded = fromSeed?.equipment.find((row) => row.id === item.id);
-          return {
-            ...item,
-            toComplete:
-              typeof item.toComplete === "number"
-                ? item.toComplete
-                : (seeded?.toComplete ?? Math.max(0, item.maxStock - item.actual)),
-          };
-        }),
+        equipment: applyItemOrder(
+          (farm.equipment ?? []).map((item) => {
+            const seeded = fromSeed?.equipment.find((row) => row.id === item.id);
+            return {
+              ...item,
+              toComplete:
+                typeof item.toComplete === "number"
+                  ? item.toComplete
+                  : (seeded?.toComplete ?? Math.max(0, item.maxStock - item.actual)),
+            };
+          }),
+          farm.itemOrder ?? fromSeed?.itemOrder,
+        ),
+        itemOrder: farm.itemOrder ?? fromSeed?.equipment.map((item) => item.id) ?? [],
       };
     });
     parsed.loads = parsed.loads ?? [];
@@ -49,7 +53,27 @@ export function listUsers(): string[] {
 export function getFarm(farmId: FarmId) {
   const farm = readStore().farms.find((item) => item.id === farmId);
   if (!farm) throw new Error("farm_not_found");
-  return farm;
+  return {
+    ...farm,
+    equipment: applyItemOrder(farm.equipment, farm.itemOrder),
+  };
+}
+
+export function listReports(farmId: FarmId): ReportRecord[] {
+  return [...readStore().reports]
+    .filter((item) => item.farmId === farmId)
+    .reverse()
+    .slice(0, 20);
+}
+
+export function saveItemOrder(farmId: FarmId, itemIds: string[]) {
+  const store = readStore();
+  const farm = store.farms.find((item) => item.id === farmId);
+  if (!farm) throw new Error("farm_not_found");
+  farm.itemOrder = itemIds;
+  farm.equipment = applyItemOrder(farm.equipment, itemIds);
+  writeStore(store);
+  return getFarm(farmId);
 }
 
 export function reportStock(
@@ -62,7 +86,9 @@ export function reportStock(
   const farm = store.farms.find((item) => item.id === farmId);
   if (!farm) throw new Error("farm_not_found");
   for (const update of updates) {
-    const item = farm.equipment.find((row) => row.id === update.id);
+    const item =
+      farm.equipment.find((row) => row.id === update.id) ??
+      farm.equipment.find((row) => row.name === update.name);
     if (!item) continue;
     if (update.actual !== undefined && Number.isFinite(Number(update.actual))) {
       item.actual = Math.max(0, Math.round(Number(update.actual)));
@@ -81,15 +107,12 @@ export function reportStock(
     items: updates,
   });
   writeStore(store);
-  return farm;
+  return getFarm(farmId);
 }
 
 export function getLoadChecklist(farmId: FarmId): LoadItem[] {
-  const store = readStore();
-  const farm = store.farms.find((item) => item.id === farmId);
-  if (!farm) throw new Error("farm_not_found");
-  const latest = [...store.loads].reverse().find((load) => load.farmId === farmId);
-  return farmLoadItems(farm, previousLoadMap(latest?.items));
+  const farm = getFarm(farmId);
+  return farmLoadItems(farm);
 }
 
 export function saveLoad(
@@ -101,8 +124,9 @@ export function saveLoad(
   const store = readStore();
   const farm = store.farms.find((item) => item.id === farmId);
   if (!farm) throw new Error("farm_not_found");
+  const ordered = applyItemOrder(farm.equipment, farm.itemOrder);
   const byId = new Map(itemsPayload.map((item) => [item.itemId, item]));
-  const items = farmLoadItems(farm).map((item) => {
+  const items = farmLoadItems({ ...farm, equipment: ordered }).map((item) => {
     const update = byId.get(item.itemId);
     if (!update) return item;
     return {

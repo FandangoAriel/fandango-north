@@ -1,48 +1,70 @@
 import { useEffect, useState } from "react";
-import type { FarmId, LoadItem } from "../../shared/types";
-import { FARM_SHEETS, nextLoadMark } from "../../shared/types";
+import type { Farm, FarmId, LoadItem } from "../../shared/types";
+import { FARM_SHEETS, mergeSubsetOrder, nextLoadMark } from "../../shared/types";
+import { loadWhatsAppText, whatsAppUrl } from "../../shared/summary";
 import { api } from "../api";
-import { CompactQty, NoteField, PrimaryButton, Screen, TriMark } from "../ui";
+import { CompactQty, ConfirmBar, NoteField, PrimaryButton, Screen, TriMark, WhatsAppButton } from "../ui";
+import { SortableList, SortableRow } from "../sortable";
 
 function LoadRows({
   items,
   onCycle,
   onHaveQty,
+  onReorder,
 }: {
   items: LoadItem[];
   onCycle: (id: string) => void;
   onHaveQty: (id: string, value: string) => void;
+  onReorder?: (ids: string[]) => void;
 }) {
-  return (
-    <div className="overflow-hidden rounded-lg bg-white">
-      {items.map((item) => (
+  const body = items.map((item) => {
+    const cluster = (
+      <div className="flex shrink-0 items-center gap-1">
+        {item.mark === "partial" && (
+          <CompactQty
+            label={`כמות שיש מ${item.name}`}
+            value={item.haveQty == null ? "" : String(item.haveQty)}
+            placeholder="יש"
+            onChange={(value) => onHaveQty(item.itemId, value)}
+          />
+        )}
+        {item.kind === "stock" && (
+          <span className="min-w-5 text-center text-[13px] font-semibold tabular-nums text-[#b45309]">
+            {item.toSupply}
+          </span>
+        )}
+        <TriMark mark={item.mark} onCycle={() => onCycle(item.itemId)} label={item.name} />
+      </div>
+    );
+    if (!onReorder) {
+      return (
         <div
           key={item.itemId}
           className="flex items-center gap-1.5 border-b border-black/8 px-2 py-0.5 last:border-b-0"
         >
-          <TriMark mark={item.mark} onCycle={() => onCycle(item.itemId)} label={item.name} />
-          <span className="min-w-0 flex-1 truncate text-[13px] leading-tight">
-            {item.name}
-            {item.kind === "stock" ? (
-              <>
-                {" "}
-                <span className="text-[13px] font-semibold tabular-nums text-[#b45309]">
-                  {item.toSupply}
-                </span>
-              </>
-            ) : null}
-          </span>
-          {item.mark === "partial" && (
-            <CompactQty
-              label={`כמות שיש מ${item.name}`}
-              value={item.haveQty == null ? "" : String(item.haveQty)}
-              placeholder="יש"
-              onChange={(value) => onHaveQty(item.itemId, value)}
-            />
-          )}
+          <span className="min-w-0 flex-1 truncate text-[13px] leading-tight">{item.name}</span>
+          {cluster}
         </div>
-      ))}
-    </div>
+      );
+    }
+    return (
+      <SortableRow key={item.itemId} id={item.itemId}>
+        {({ grip }) => (
+          <div className="flex items-center gap-1.5 border-b border-black/8 px-2 py-0.5 last:border-b-0">
+            {grip}
+            <span className="min-w-0 flex-1 truncate text-[13px] leading-tight">{item.name}</span>
+            {cluster}
+          </div>
+        )}
+      </SortableRow>
+    );
+  });
+  const list = <div className="overflow-hidden rounded-lg bg-white">{body}</div>;
+  if (!onReorder) return list;
+  return (
+    <SortableList ids={items.map((item) => item.itemId)} onReorder={onReorder}>
+      {list}
+    </SortableList>
   );
 }
 
@@ -56,16 +78,19 @@ export function LoadScreen({
   onBack: () => void;
 }) {
   const [items, setItems] = useState<LoadItem[]>([]);
+  const [equipmentIds, setEquipmentIds] = useState<string[]>([]);
   const [demo, setDemo] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [note, setNote] = useState("");
+  const [warn, setWarn] = useState("");
+  const [saved, setSaved] = useState(false);
 
-  useEffect(() => {
-    api<{ items: LoadItem[]; demo: boolean }>(`/api/load?farm=${farmId}`)
-      .then((data) => {
+  function loadList() {
+    return api<{ items: LoadItem[]; equipmentIds?: string[]; demo: boolean }>(`/api/load?farm=${farmId}`).then(
+      (data) => {
         setItems(
           data.items.map((item) => ({
             ...item,
@@ -73,8 +98,14 @@ export function LoadScreen({
             haveQty: item.haveQty ?? null,
           })),
         );
+        setEquipmentIds(data.equipmentIds ?? data.items.filter((item) => item.kind === "stock").map((item) => item.itemId));
         setDemo(data.demo);
-      })
+      },
+    );
+  }
+
+  useEffect(() => {
+    loadList()
       .catch(() => setError("לא הצלחנו לטעון את רשימת ההעמסה"))
       .finally(() => setLoading(false));
   }, [farmId]);
@@ -82,8 +113,11 @@ export function LoadScreen({
   const markedCount = items.filter((item) => item.mark !== "unset").length;
   const containers = items.filter((item) => item.kind === "container");
   const stock = items.filter((item) => item.kind === "stock");
+  const waHref = whatsAppUrl(loadWhatsAppText(FARM_SHEETS[farmId].name, user, items, note));
 
   function cycle(id: string) {
+    setWarn("");
+    setSaved(false);
     setItems((current) =>
       current.map((row) => {
         if (row.itemId !== id) return row;
@@ -105,10 +139,33 @@ export function LoadScreen({
     );
   }
 
+  async function reorderStock(ids: string[]) {
+    const byId = new Map(items.map((item) => [item.itemId, item]));
+    const nextStock = ids.map((id) => byId.get(id)).filter((item): item is LoadItem => Boolean(item));
+    setItems([...containers, ...nextStock]);
+    const merged = mergeSubsetOrder(equipmentIds.length ? equipmentIds : ids, ids);
+    setEquipmentIds(merged);
+    try {
+      const data = await api<{ farm: Farm }>("/api/order", {
+        method: "POST",
+        body: JSON.stringify({ farmId, itemIds: merged }),
+      });
+      setEquipmentIds(data.farm.equipment.map((item) => item.id));
+    } catch {
+      setError("לא הצלחנו לשמור את הסדר");
+    }
+  }
+
   async function save() {
+    const missing = items.filter((item) => item.mark === "unset");
+    if (missing.length && !warn) {
+      setWarn(`לא סומנו ${missing.length} פריטים. לשמור בכל זאת?`);
+      return;
+    }
     setSaving(true);
     setMessage("");
     setError("");
+    setWarn("");
     try {
       await api("/api/load", {
         method: "POST",
@@ -123,7 +180,8 @@ export function LoadScreen({
           })),
         }),
       });
-      setMessage("ההעמסה נשמרה");
+      setSaved(true);
+      setMessage("ההעמסה נשמרה. אפשר לשלוח סיכום בוואטסאפ.");
     } catch {
       setError("השמירה נכשלה");
     } finally {
@@ -157,9 +215,14 @@ export function LoadScreen({
         </div>
       ) : (
         <>
-          <p className="text-[12px] text-black/60">
-            סומנו {markedCount} מתוך {items.length}
-          </p>
+          <div className="flex items-center justify-between text-[12px] text-black/60">
+            <span>
+              סומנו {markedCount} מתוך {items.length}
+            </span>
+            <button type="button" className="text-[#3d6b4a]" onClick={() => loadList().catch(() => setError("הרענון נכשל"))}>
+              רענון מהגיליון
+            </button>
+          </div>
           {containers.length > 0 && (
             <section>
               <h2 className="mb-0.5 text-[11px] font-semibold text-[#3d6b4a]">מיכלים משולטים</h2>
@@ -169,14 +232,21 @@ export function LoadScreen({
           {stock.length > 0 && (
             <section>
               <h2 className="mb-0.5 text-[11px] font-semibold text-[#3d6b4a]">ציוד להשלמה</h2>
-              <LoadRows items={stock} onCycle={cycle} onHaveQty={setHaveQty} />
+              <LoadRows items={stock} onCycle={cycle} onHaveQty={setHaveQty} onReorder={reorderStock} />
             </section>
           )}
           <NoteField value={note} onChange={setNote} label="הערה" />
-          <div className="sticky bottom-0 bg-[#f4efe4] pt-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
-            <PrimaryButton onClick={save} disabled={saving}>
+          {warn && (
+            <ConfirmBar text={warn} onCancel={() => setWarn("")} onConfirm={() => void save()} />
+          )}
+          <div className="sticky bottom-0 space-y-2 bg-[#f4efe4] pt-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
+            <PrimaryButton onClick={() => void save()} disabled={saving}>
               {saving ? "שומר…" : "שמירת העמסה"}
             </PrimaryButton>
+            <WhatsAppButton href={waHref} />
+            {saved ? null : (
+              <p className="text-center text-[11px] text-black/45">הסיכום כולל כמה היה צריך וכמה הועמס</p>
+            )}
           </div>
         </>
       )}

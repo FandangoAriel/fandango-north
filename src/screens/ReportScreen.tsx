@@ -1,8 +1,22 @@
 import { Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { Farm, FarmId, StockUpdate } from "../../shared/types";
+import type { Farm, FarmId, ReportRecord, StockUpdate } from "../../shared/types";
 import { api } from "../api";
-import { CompactQty, NoteField, PrimaryButton, Screen } from "../ui";
+import { CompactQty, ConfirmBar, NoteField, PrimaryButton, Screen } from "../ui";
+import { SortableList, SortableRow } from "../sortable";
+
+const ROW = "grid grid-cols-[18px_minmax(0,1fr)_4.75rem_3.25rem] items-center gap-x-1 border-b border-black/8 px-1 py-0.5";
+
+function formatWhen(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString("he-IL", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export function ReportScreen({
   farmId,
@@ -22,25 +36,89 @@ export function ReportScreen({
   const [maxDraft, setMaxDraft] = useState<Record<string, string>>({});
   const [editingMax, setEditingMax] = useState<string | null>(null);
   const [note, setNote] = useState("");
+  const [reports, setReports] = useState<ReportRecord[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [editingReport, setEditingReport] = useState<ReportRecord | null>(null);
+  const [warn, setWarn] = useState("");
 
-  useEffect(() => {
-    api<{ farm: Farm; demo: boolean }>(`/api/inventory?farm=${farmId}`)
-      .then((data) => {
-        setFarm(data.farm);
-        setDemo(data.demo);
+  function loadFarm(resetDrafts: boolean) {
+    return api<{ farm: Farm; demo: boolean }>(`/api/inventory?farm=${farmId}`).then((data) => {
+      setFarm(data.farm);
+      setDemo(data.demo);
+      if (resetDrafts) {
         setActualDraft({});
         setMaxDraft({});
         setEditingMax(null);
         setNote("");
-      })
-      .catch(() => setError("לא הצלחנו לטעון את המלאי"));
+        setEditingReport(null);
+        setWarn("");
+      }
+    });
+  }
+
+  useEffect(() => {
+    loadFarm(true).catch(() => setError("לא הצלחנו לטעון את המלאי"));
+    api<{ reports: ReportRecord[] }>(`/api/reports?farm=${farmId}`)
+      .then((data) => setReports(data.reports))
+      .catch(() => setReports([]));
   }, [farmId]);
+
+  function applyReport(report: ReportRecord) {
+    if (!farm) return;
+    const next: Record<string, string> = {};
+    const maxNext: Record<string, string> = {};
+    for (const item of report.items) {
+      const match =
+        farm.equipment.find((row) => row.id === item.id) ??
+        farm.equipment.find((row) => row.name === item.name);
+      if (!match) continue;
+      if (item.actual !== undefined) next[match.id] = String(item.actual);
+      if (item.maxStock !== undefined) maxNext[match.id] = String(item.maxStock);
+    }
+    setActualDraft(next);
+    setMaxDraft(maxNext);
+    setNote(report.note ?? "");
+    setEditingReport(report);
+    setShowHistory(false);
+    setWarn("");
+    setMessage(`נפתח דיווח מ־${formatWhen(report.at)}. שמירה תעדכן את הגיליון.`);
+  }
+
+  function fillFromSheet() {
+    if (!farm) return;
+    const next: Record<string, string> = {};
+    for (const item of farm.equipment) next[item.id] = String(item.actual);
+    setActualDraft(next);
+    setEditingReport(null);
+    setMessage("מולא לפי המלאי שבגיליון. אפשר לערוך ולשמור.");
+  }
+
+  async function reorder(ids: string[]) {
+    if (!farm) return;
+    setFarm({ ...farm, equipment: ids.map((id) => farm.equipment.find((item) => item.id === id)!).filter(Boolean), itemOrder: ids });
+    try {
+      const data = await api<{ farm: Farm; demo: boolean }>("/api/order", {
+        method: "POST",
+        body: JSON.stringify({ farmId, itemIds: ids }),
+      });
+      setFarm(data.farm);
+      setDemo(data.demo);
+    } catch {
+      setError("לא הצלחנו לשמור את הסדר");
+    }
+  }
 
   async function save() {
     if (!farm) return;
+    const missing = farm.equipment.filter((item) => !actualDraft[item.id]?.length);
+    if (missing.length && !warn) {
+      setWarn(`לא דווח מלאי קיים ב־${missing.length} פריטים. לשמור בכל זאת?`);
+      return;
+    }
     setSaving(true);
     setMessage("");
     setError("");
+    setWarn("");
     try {
       const items: StockUpdate[] = [];
       for (const item of farm.equipment) {
@@ -71,7 +149,10 @@ export function ReportScreen({
       setMaxDraft({});
       setEditingMax(null);
       setNote("");
+      setEditingReport(null);
       setMessage(items.length || note.trim() ? "הדיווח נשמר" : "אין כמויות לדיווח");
+      const listed = await api<{ reports: ReportRecord[] }>(`/api/reports?farm=${farmId}`);
+      setReports(listed.reports);
     } catch {
       setError("השמירה נכשלה");
     } finally {
@@ -87,6 +168,8 @@ export function ReportScreen({
     );
   }
 
+  const ids = farm?.equipment.map((item) => item.id) ?? [];
+
   return (
     <Screen
       title="דיווח מלאי"
@@ -98,53 +181,112 @@ export function ReportScreen({
       {message && (
         <p className="rounded-md bg-emerald-50 px-2 py-1 text-[12px] text-emerald-800">{message}</p>
       )}
-      <div className="overflow-hidden rounded-lg bg-white">
-        {farm?.equipment.map((item) => {
-          const maxValue = maxDraft[item.id] ?? String(item.maxStock);
-          const editing = editingMax === item.id;
-          return (
-            <div
-              key={item.id}
-              className="flex items-center gap-1.5 border-b border-black/8 px-2 py-0.5 last:border-b-0"
-            >
-              <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-tight">
-                {item.name}
-              </span>
-              {editing ? (
-                <CompactQty
-                  label={`מקס של ${item.name}`}
-                  value={maxValue}
-                  onChange={(value) => setMaxDraft((current) => ({ ...current, [item.id]: value }))}
-                />
-              ) : (
-                <span className="shrink-0 text-[12px] text-black/50">מקס {maxValue}</span>
-              )}
+      <div className="flex flex-wrap gap-2 text-[12px]">
+        <button type="button" className="text-[#3d6b4a]" onClick={() => setShowHistory((open) => !open)}>
+          עריכת דיווח קודם
+        </button>
+        <button type="button" className="text-[#3d6b4a]" onClick={fillFromSheet}>
+          מילוי לפי הגיליון
+        </button>
+        <button type="button" className="text-[#3d6b4a]" onClick={() => loadFarm(false).catch(() => setError("הרענון נכשל"))}>
+          רענון מהגיליון
+        </button>
+      </div>
+      {showHistory && (
+        <div className="rounded-lg bg-white px-2 py-1">
+          {reports.length === 0 ? (
+            <p className="py-2 text-[12px] text-black/50">אין דיווחים קודמים</p>
+          ) : (
+            reports.map((report) => (
               <button
+                key={report.id}
                 type="button"
-                aria-label={`עריכת מקס של ${item.name}`}
-                onClick={() => {
-                  setMaxDraft((current) => ({
-                    ...current,
-                    [item.id]: current[item.id] ?? String(item.maxStock),
-                  }));
-                  setEditingMax(editing ? null : item.id);
-                }}
-                className="flex size-7 shrink-0 items-center justify-center rounded-md text-[#3d6b4a]"
+                onClick={() => applyReport(report)}
+                className="flex w-full items-center justify-between border-b border-black/8 py-1.5 text-right text-[12px] last:border-b-0"
               >
-                <Pencil size={13} strokeWidth={2.2} />
+                <span>
+                  {formatWhen(report.at)} · {report.user}
+                </span>
+                <span className="text-black/45">{report.items.length} פריטים</span>
               </button>
-              <CompactQty
-                label={`כמות בפועל של ${item.name}`}
-                value={actualDraft[item.id] ?? ""}
-                onChange={(value) => setActualDraft((current) => ({ ...current, [item.id]: value }))}
-              />
-            </div>
-          );
-        })}
+            ))
+          )}
+        </div>
+      )}
+      {editingReport && (
+        <p className="text-[11px] text-[#3d6b4a]">
+          עורכים דיווח מ־{formatWhen(editingReport.at)}. שמירה כותבת מחדש לגיליון.
+        </p>
+      )}
+      <div className="overflow-hidden rounded-lg bg-white">
+        <div className={`${ROW} border-b border-black/15 bg-[#f8f4ea] text-[10px] font-semibold text-black/55`}>
+          <span />
+          <span>פריט</span>
+          <span className="text-center">מקס</span>
+          <span className="text-center leading-tight">מלאי קיים</span>
+        </div>
+        <SortableList ids={ids} onReorder={reorder}>
+          {farm?.equipment.map((item) => {
+            const maxValue = maxDraft[item.id] ?? String(item.maxStock);
+            const editing = editingMax === item.id;
+            return (
+              <SortableRow key={item.id} id={item.id}>
+                {({ grip }) => (
+                  <div className={ROW}>
+                    {grip}
+                    <span className="min-w-0 truncate text-[13px] font-medium leading-tight">
+                      {item.name}
+                    </span>
+                    <div className="flex items-center justify-center gap-0.5">
+                      {editing ? (
+                        <CompactQty
+                          label={`מקס של ${item.name}`}
+                          value={maxValue}
+                          onChange={(value) =>
+                            setMaxDraft((current) => ({ ...current, [item.id]: value }))
+                          }
+                        />
+                      ) : (
+                        <span className="text-[12px] tabular-nums text-black/55">{maxValue}</span>
+                      )}
+                      <button
+                        type="button"
+                        aria-label={`עריכת מקס של ${item.name}`}
+                        onClick={() => {
+                          setMaxDraft((current) => ({
+                            ...current,
+                            [item.id]: current[item.id] ?? String(item.maxStock),
+                          }));
+                          setEditingMax(editing ? null : item.id);
+                        }}
+                        className="flex size-6 shrink-0 items-center justify-center rounded-md text-[#3d6b4a]"
+                      >
+                        <Pencil size={13} strokeWidth={2.2} />
+                      </button>
+                    </div>
+                    <div className="flex justify-center">
+                      <CompactQty
+                        label={`מלאי קיים של ${item.name}`}
+                        value={actualDraft[item.id] ?? ""}
+                        onChange={(value) => {
+                          setWarn("");
+                          setActualDraft((current) => ({ ...current, [item.id]: value }));
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </SortableRow>
+            );
+          })}
+        </SortableList>
       </div>
       <NoteField value={note} onChange={setNote} label="הערה" />
+      {warn && (
+        <ConfirmBar text={warn} onCancel={() => setWarn("")} onConfirm={() => void save()} />
+      )}
       <div className="sticky bottom-0 bg-[#f4efe4] pt-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
-        <PrimaryButton onClick={save} disabled={saving || !farm}>
+        <PrimaryButton onClick={() => void save()} disabled={saving || !farm}>
           {saving ? "שומר…" : "שמירה לגיליון"}
         </PrimaryButton>
       </div>

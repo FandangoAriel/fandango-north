@@ -103,6 +103,53 @@ export function CompactQty({
   );
 }
 
+export function ConfirmBar({
+  text,
+  onCancel,
+  onConfirm,
+  confirmLabel = "לשמור בכל זאת",
+}: {
+  text: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+  confirmLabel?: string;
+}) {
+  return (
+    <div className="rounded-lg border border-[#b45309]/30 bg-[#fff7ed] px-2 py-2 text-[12px] text-[#9a3412]">
+      <p>{text}</p>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="min-h-9 rounded-lg border border-black/10 bg-white text-[13px] font-medium"
+        >
+          חזרה למילוי
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          className="min-h-9 rounded-lg bg-[#b45309] text-[13px] font-medium text-white"
+        >
+          {confirmLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function WhatsAppButton({ href, disabled }: { href: string; disabled?: boolean }) {
+  return (
+    <a
+      href={disabled ? undefined : href}
+      target="_blank"
+      rel="noreferrer"
+      aria-disabled={disabled}
+      className={`flex min-h-11 w-full items-center justify-center rounded-xl border border-[#1f6b4a] bg-white px-4 text-[15px] font-semibold text-[#1f6b4a] ${disabled ? "pointer-events-none opacity-50" : ""}`}
+    >
+      שליחה בוואטסאפ
+    </a>
+  );
+}
 export function NoteField({
   value,
   onChange,

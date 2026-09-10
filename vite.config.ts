@@ -5,8 +5,10 @@ import tailwindcss from "@tailwindcss/vite";
 import {
   handleGetLoad,
   handleInventory,
+  handleListReports,
   handleReport,
   handleSaveLoad,
+  handleSaveOrder,
   handleUsers,
   json,
 } from "./shared/handlers";
@@ -69,6 +71,15 @@ function apiPlugin(): Plugin {
           if (url.pathname === "/api/load" && req.method === "POST") {
             const payload = JSON.parse((await readBody(req)) || "{}");
             send(res, await handleSaveLoad(payload));
+            return;
+          }
+          if (url.pathname === "/api/reports") {
+            send(res, await handleListReports(url.searchParams.get("farm")));
+            return;
+          }
+          if (url.pathname === "/api/order" && req.method === "POST") {
+            const payload = JSON.parse((await readBody(req)) || "{}");
+            send(res, await handleSaveOrder(payload));
             return;
           }
           send(res, json(404, { error: "not_found" }));

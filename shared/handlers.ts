@@ -2,17 +2,21 @@ import {
   getFarm,
   getLoadChecklist,
   isDemoMode,
+  listReports,
   listUsers,
   reportStock,
+  saveItemOrder,
   saveLoad,
 } from "./mock-store";
 import {
   googleConfigured,
   googleGetFarm,
   googleGetLoad,
+  googleListReports,
   googleListUsers,
   googleReportStock,
   googleSaveLoad,
+  googleSaveOrder,
 } from "./google";
 import type { FarmId, LoadMark, StockUpdate } from "./types";
 
@@ -87,13 +91,22 @@ export async function handleGetLoad(farmRaw: string | null) {
   const farmId = farmIdFrom(farmRaw);
   if (googleConfigured() && !isDemoMode()) {
     try {
-      const items = await googleGetLoad(farmId);
-      return json(200, { items, demo: false });
+      const farm = await googleGetFarm(farmId);
+      return json(200, {
+        items: await googleGetLoad(farmId),
+        equipmentIds: farm.equipment.map((item) => item.id),
+        demo: false,
+      });
     } catch {
       // demo fallback
     }
   }
-  return json(200, { items: getLoadChecklist(farmId), demo: true });
+  const farm = getFarm(farmId);
+  return json(200, {
+    items: getLoadChecklist(farmId),
+    equipmentIds: farm.equipment.map((item) => item.id),
+    demo: true,
+  });
 }
 
 export async function handleSaveLoad(payload: {
@@ -119,4 +132,32 @@ export async function handleSaveLoad(payload: {
   }
   const record = saveLoad(farmId, user, items, note);
   return json(200, { record, demo: true });
+}
+
+export async function handleListReports(farmRaw: string | null) {
+  const farmId = farmIdFrom(farmRaw);
+  if (googleConfigured() && !isDemoMode()) {
+    try {
+      const reports = await googleListReports(farmId);
+      return json(200, { reports, demo: false });
+    } catch {
+      // demo fallback
+    }
+  }
+  return json(200, { reports: listReports(farmId), demo: true });
+}
+
+export async function handleSaveOrder(payload: { farmId?: string; itemIds?: string[] }) {
+  const farmId = farmIdFrom(payload.farmId ?? null);
+  const itemIds = payload.itemIds ?? [];
+  if (googleConfigured() && !isDemoMode()) {
+    try {
+      const farm = await googleSaveOrder(farmId, itemIds);
+      return json(200, { farm, demo: false });
+    } catch {
+      // demo fallback
+    }
+  }
+  const farm = saveItemOrder(farmId, itemIds);
+  return json(200, { farm, demo: true });
 }

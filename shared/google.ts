@@ -7,14 +7,15 @@ import type {
   LoadItem,
   LoadMark,
   LoadRecord,
+  ReportRecord,
   StockUpdate,
 } from "./types";
 import {
   FARM_SHEETS,
+  applyItemOrder,
   completeFromRow,
   farmLoadItems,
   isSuppliedFlag,
-  previousLoadMap,
   todayIso,
 } from "./types";
 
@@ -94,6 +95,50 @@ export async function googleListUsers(): Promise<string[]> {
   return (data.values ?? []).map((row) => row[0]?.trim()).filter(Boolean).slice(0, 10);
 }
 
+function uniqueEquipmentId(farmId: FarmId, name: string, used: Set<string>) {
+  let id = `${farmId}:${name}`;
+  let n = 2;
+  while (used.has(id)) {
+    id = `${farmId}:${name}:${n}`;
+    n += 1;
+  }
+  used.add(id);
+  return id;
+}
+
+async function googleGetOrder(farmId: FarmId): Promise<string[]> {
+  try {
+    const data = await sheetsGet("סדר!A1:B30");
+    const row = (data.values ?? []).find((item) => item[0] === farmId);
+    if (!row?.[1]) return [];
+    const parsed = JSON.parse(row[1]) as string[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function googleSaveOrder(farmId: FarmId, itemIds: string[]) {
+  const farm = await googleGetFarm(farmId);
+  const names = itemIds
+    .map((id) => farm.equipment.find((item) => item.id === id)?.name ?? id)
+    .filter(Boolean);
+  let rows: string[][] = [];
+  try {
+    rows = (await sheetsGet("סדר!A1:B30")).values ?? [];
+  } catch {
+    rows = [];
+  }
+  const index = rows.findIndex((row) => row[0] === farmId);
+  const payload = [farmId, JSON.stringify(names)];
+  if (index >= 0) {
+    await sheetsUpdate(`סדר!A${index + 1}:B${index + 1}`, [payload]);
+  } else {
+    await sheetsAppend("סדר!A1", [payload]);
+  }
+  return googleGetFarm(farmId);
+}
+
 export async function googleGetFarm(farmId: FarmId): Promise<Farm> {
   const meta = FARM_SHEETS[farmId];
   const data = await sheetsGet(`'${meta.sheet}'!A1:M80`);
@@ -108,13 +153,14 @@ export async function googleGetFarm(farmId: FarmId): Promise<Farm> {
   }
   const equipment: EquipmentItem[] = [];
   const containers: LabeledContainer[] = [];
+  const usedIds = new Set<string>();
   for (let i = meta.startRow - 1; i < rows.length; i += 1) {
     const name = rows[i]?.[0]?.trim();
     if (name) {
       const actual = parseNumber(rows[i]?.[1]);
       const maxStock = parseNumber(rows[i]?.[2]);
       equipment.push({
-        id: `${farmId}-${i}`,
+        id: uniqueEquipmentId(farmId, name, usedIds),
         name,
         actual,
         maxStock,
@@ -133,7 +179,15 @@ export async function googleGetFarm(farmId: FarmId): Promise<Farm> {
       });
     }
   }
-  return { id: farmId, name: meta.name, updatedAt, equipment, containers };
+  const itemOrder = await googleGetOrder(farmId);
+  return {
+    id: farmId,
+    name: meta.name,
+    updatedAt,
+    equipment: applyItemOrder(equipment, itemOrder),
+    containers,
+    itemOrder,
+  };
 }
 
 export async function googleReportStock(
@@ -182,6 +236,7 @@ export async function googleReportStock(
             return parts.join(" ");
           })
           .join("; "),
+        JSON.stringify(updates),
       ],
     ]);
   } catch {
@@ -190,54 +245,39 @@ export async function googleReportStock(
   return googleGetFarm(farmId);
 }
 
-function parseMarksCell(value: string | undefined): Map<string, LoadItem> {
-  if (!value) return new Map();
+export async function googleListReports(farmId: FarmId): Promise<ReportRecord[]> {
   try {
-    const parsed = JSON.parse(value) as {
-      itemId?: string;
-      name?: string;
-      mark?: LoadMark;
-      haveQty?: number | null;
-    }[];
-    const items: LoadItem[] = parsed.map((row) => ({
-      itemId: row.itemId || row.name || "",
-      kind: "stock",
-      name: row.name || row.itemId || "",
-      toSupply: 0,
-      mark: row.mark ?? "unset",
-      haveQty: row.haveQty ?? null,
-    }));
-    return previousLoadMap(items);
+    const data = await sheetsGet("דיווחים!A2:G200");
+    const farmName = FARM_SHEETS[farmId].name;
+    return (data.values ?? [])
+      .filter((row) => row[3] === farmId || row[2] === farmName)
+      .map((row, index) => {
+        let items: StockUpdate[] = [];
+        try {
+          const parsed = JSON.parse(row[6] || "[]") as StockUpdate[];
+          if (Array.isArray(parsed)) items = parsed;
+        } catch {
+          items = [];
+        }
+        return {
+          id: `${farmId}-report-${index}-${row[0] ?? ""}`,
+          at: row[0] || "",
+          user: row[1] || "",
+          farmId,
+          note: row[4] || undefined,
+          items,
+        };
+      })
+      .reverse()
+      .slice(0, 20);
   } catch {
-    const names = String(value)
-      .split(",")
-      .map((part) => part.trim())
-      .filter(Boolean);
-    const items: LoadItem[] = names.map((name) => ({
-      itemId: name,
-      kind: "stock",
-      name,
-      toSupply: 0,
-      mark: "full",
-      haveQty: null,
-    }));
-    return previousLoadMap(items);
+    return [];
   }
 }
 
 export async function googleGetLoad(farmId: FarmId): Promise<LoadItem[]> {
   const farm = await googleGetFarm(farmId);
-  let previous = new Map<string, LoadItem>();
-  try {
-    const log = await sheetsGet("העמסות!A2:H200");
-    const rows = (log.values ?? []).reverse();
-    const latest = rows.find((row) => row[2] === farmId || row[2] === FARM_SHEETS[farmId].name);
-    if (latest?.[7]) previous = parseMarksCell(latest[7]);
-    else if (latest?.[5]) previous = parseMarksCell(latest[5]);
-  } catch {
-    // tab may not exist yet
-  }
-  return farmLoadItems(farm, previous);
+  return farmLoadItems(farm);
 }
 
 export async function googleSaveLoad(
