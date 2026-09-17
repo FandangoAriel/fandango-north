@@ -60,7 +60,7 @@ export function SortableRow({
     <button
       type="button"
       aria-label="גרירת פריט"
-      className="flex h-7 w-6 shrink-0 flex-col items-center justify-center gap-[3px] rounded-md text-[#3d6b4a]"
+      className="flex h-7 w-6 shrink-0 touch-none flex-col items-center justify-center gap-[3px] rounded-md text-[#3d6b4a]"
       {...attributes}
       {...listeners}
     >

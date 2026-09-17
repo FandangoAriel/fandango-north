@@ -1,5 +1,5 @@
 import { Pencil, Plus, X } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { EquipmentItem, Farm, FarmId, ReportRecord, StockUpdate } from "../../shared/types";
 import { isNewEquipmentId } from "../../shared/types";
 import { api } from "../api";
@@ -44,6 +44,7 @@ export function ReportScreen({
   const [warn, setWarn] = useState("");
 
   const [focusNew, setFocusNew] = useState<string | null>(null);
+  const [reorderMode, setReorderMode] = useState(false);
 
   function mergeNewItems(next: Farm, previous: Farm | null): Farm {
     const extras = previous?.equipment.filter((item) => isNewEquipmentId(item.id)) ?? [];
@@ -276,6 +277,62 @@ export function ReportScreen({
   const added = farm?.equipment.filter((item) => isNewEquipmentId(item.id)) ?? [];
   const ids = existing.map((item) => item.id);
 
+  function existingRow(item: EquipmentItem, grip: ReactNode) {
+    const maxValue = maxDraft[item.id] ?? String(item.maxStock);
+    const editing = editingMax === item.id;
+    return (
+      <div className={ROW}>
+        {grip}
+        <span className="min-w-0 truncate text-[13px] font-medium leading-tight">{item.name}</span>
+        <div className="flex items-center justify-center gap-0.5">
+          {editing ? (
+            <CompactQty
+              label={`מקס של ${item.name}`}
+              value={maxValue}
+              onChange={(value) => setMaxDraft((current) => ({ ...current, [item.id]: value }))}
+            />
+          ) : (
+            <span className="text-[12px] tabular-nums text-black/55">{maxValue}</span>
+          )}
+          <button
+            type="button"
+            aria-label={`עריכת מקס של ${item.name}`}
+            onClick={() => {
+              setMaxDraft((current) => ({
+                ...current,
+                [item.id]: current[item.id] ?? String(item.maxStock),
+              }));
+              setEditingMax(editing ? null : item.id);
+            }}
+            className="flex size-6 shrink-0 items-center justify-center rounded-md text-[#3d6b4a]"
+          >
+            <Pencil size={13} strokeWidth={2.2} />
+          </button>
+        </div>
+        <div className="flex justify-center">
+          <CompactQty
+            label={`מלאי קיים של ${item.name}`}
+            value={actualDraft[item.id] ?? ""}
+            onChange={(value) => {
+              setWarn("");
+              setActualDraft((current) => ({ ...current, [item.id]: value }));
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  const existingRows = existing.map((item) =>
+    reorderMode ? (
+      <SortableRow key={item.id} id={item.id}>
+        {({ grip }) => existingRow(item, grip)}
+      </SortableRow>
+    ) : (
+      <div key={item.id}>{existingRow(item, <span />)}</div>
+    ),
+  );
+
   return (
     <Screen
       title="דיווח מלאי"
@@ -288,6 +345,9 @@ export function ReportScreen({
         <p className="rounded-md bg-emerald-50 px-2 py-1 text-[12px] text-emerald-800">{message}</p>
       )}
       <div className="flex flex-wrap gap-2">
+        <ChipButton active={reorderMode} onClick={() => setReorderMode((on) => !on)}>
+          שינוי סדר
+        </ChipButton>
         <ChipButton active={showHistory} onClick={() => setShowHistory((open) => !open)}>
           עריכת דיווח קודם
         </ChipButton>
@@ -296,6 +356,9 @@ export function ReportScreen({
           רענון מהגיליון
         </ChipButton>
       </div>
+      {reorderMode && (
+        <p className="text-[11px] text-[#3d6b4a]">מצב סידור פעיל — גררו את הפריטים. כבו כדי לגלול את הרשימה.</p>
+      )}
       {showHistory && (
         <div className="rounded-lg bg-white px-2 py-1">
           {reports.length === 0 ? (
@@ -322,68 +385,20 @@ export function ReportScreen({
           עורכים דיווח מ־{formatWhen(editingReport.at)}. שמירה כותבת מחדש לגיליון.
         </p>
       )}
-      <div className="overflow-hidden rounded-lg bg-white">
+      <div className={`overflow-hidden rounded-lg bg-white ${reorderMode ? "" : "touch-pan-y"}`}>
         <div className={`${ROW} border-b border-black/15 bg-[#f8f4ea] text-[10px] font-semibold text-black/55`}>
           <span />
           <span>פריט</span>
           <span className="text-center">מקס</span>
           <span className="text-center leading-tight">מלאי קיים</span>
         </div>
-        <SortableList ids={ids} onReorder={reorder}>
-          {existing.map((item) => {
-            const maxValue = maxDraft[item.id] ?? String(item.maxStock);
-            const editing = editingMax === item.id;
-            return (
-              <SortableRow key={item.id} id={item.id}>
-                {({ grip }) => (
-                  <div className={ROW}>
-                    {grip}
-                    <span className="min-w-0 truncate text-[13px] font-medium leading-tight">
-                      {item.name}
-                    </span>
-                    <div className="flex items-center justify-center gap-0.5">
-                      {editing ? (
-                        <CompactQty
-                          label={`מקס של ${item.name}`}
-                          value={maxValue}
-                          onChange={(value) =>
-                            setMaxDraft((current) => ({ ...current, [item.id]: value }))
-                          }
-                        />
-                      ) : (
-                        <span className="text-[12px] tabular-nums text-black/55">{maxValue}</span>
-                      )}
-                      <button
-                        type="button"
-                        aria-label={`עריכת מקס של ${item.name}`}
-                        onClick={() => {
-                          setMaxDraft((current) => ({
-                            ...current,
-                            [item.id]: current[item.id] ?? String(item.maxStock),
-                          }));
-                          setEditingMax(editing ? null : item.id);
-                        }}
-                        className="flex size-6 shrink-0 items-center justify-center rounded-md text-[#3d6b4a]"
-                      >
-                        <Pencil size={13} strokeWidth={2.2} />
-                      </button>
-                    </div>
-                    <div className="flex justify-center">
-                      <CompactQty
-                        label={`מלאי קיים של ${item.name}`}
-                        value={actualDraft[item.id] ?? ""}
-                        onChange={(value) => {
-                          setWarn("");
-                          setActualDraft((current) => ({ ...current, [item.id]: value }));
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </SortableRow>
-            );
-          })}
-        </SortableList>
+        {reorderMode ? (
+          <SortableList ids={ids} onReorder={reorder}>
+            {existingRows}
+          </SortableList>
+        ) : (
+          existingRows
+        )}
         {added.map((item) => (
           <div key={item.id} className={ROW}>
             <button

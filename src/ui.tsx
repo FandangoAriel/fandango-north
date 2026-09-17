@@ -86,6 +86,7 @@ export function ChipButton({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={`min-h-8 rounded-lg border px-2.5 text-[12px] font-medium ${
         active
           ? "border-[#3d6b4a] bg-[#3d6b4a] text-white"
