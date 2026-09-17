@@ -95,10 +95,12 @@ export function LoadScreen({
   farmId,
   user,
   onBack,
+  onSaved,
 }: {
   farmId: FarmId;
   user: string;
   onBack: () => void;
+  onSaved: () => void;
 }) {
   const [items, setItems] = useState<LoadItem[]>([]);
   const [equipmentIds, setEquipmentIds] = useState<string[]>([]);
@@ -218,7 +220,8 @@ export function LoadScreen({
         }),
       });
       setSaved(true);
-      setMessage("ההעמסה נשמרה. אפשר לשלוח סיכום בוואטסאפ.");
+      setMessage("ההעמסה נשמרה");
+      onSaved();
     } catch {
       setError("השמירה נכשלה");
     } finally {
