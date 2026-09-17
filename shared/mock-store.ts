@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createSeedStore } from "./seed";
 import type { AppStore, DirtyMedia, FarmId, LoadItem, LoadMark, LoadRecord, ReportRecord, StockUpdate } from "./types";
-import { applyItemOrder, farmLoadItems, isNewEquipmentId, todayIso } from "./types";
+import { applyItemOrder, farmLoadItems } from "./types";
 
 const STORE_PATH = join(process.cwd(), ".data", "store.json");
 
@@ -47,7 +47,18 @@ function writeStore(store: AppStore) {
 }
 
 export function listUsers(): string[] {
-  return readStore().users.slice(0, 10);
+  return readStore().users;
+}
+
+export function addUser(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("missing_name");
+  const store = readStore();
+  if (!store.users.some((user) => user.toLowerCase() === trimmed.toLowerCase())) {
+    store.users.push(trimmed);
+    writeStore(store);
+  }
+  return readStore().users;
 }
 
 export function getFarm(farmId: FarmId) {
@@ -86,48 +97,6 @@ export function reportStock(
   const store = readStore();
   const farm = store.farms.find((item) => item.id === farmId);
   if (!farm) throw new Error("farm_not_found");
-  const usedIds = new Set(farm.equipment.map((row) => row.id));
-  for (const update of updates) {
-    const name = update.name?.trim();
-    const item =
-      (!isNewEquipmentId(update.id)
-        ? farm.equipment.find((row) => row.id === update.id)
-        : undefined) ??
-      (name ? farm.equipment.find((row) => row.name === name) : undefined);
-    const actual =
-      update.actual !== undefined && Number.isFinite(Number(update.actual))
-        ? Math.max(0, Math.round(Number(update.actual)))
-        : undefined;
-    const maxStock =
-      update.maxStock !== undefined && Number.isFinite(Number(update.maxStock))
-        ? Math.max(0, Math.round(Number(update.maxStock)))
-        : undefined;
-    if (!item) {
-      if (!name) continue;
-      let id = `${farmId}:${name}`;
-      let n = 2;
-      while (usedIds.has(id)) {
-        id = `${farmId}:${name}:${n}`;
-        n += 1;
-      }
-      usedIds.add(id);
-      const nextActual = actual ?? 0;
-      const nextMax = maxStock ?? nextActual;
-      farm.equipment.push({
-        id,
-        name,
-        actual: nextActual,
-        maxStock: nextMax,
-        toComplete: Math.max(0, nextMax - nextActual),
-      });
-      farm.itemOrder = [...(farm.itemOrder ?? farm.equipment.slice(0, -1).map((row) => row.id)), id];
-      continue;
-    }
-    if (actual !== undefined) item.actual = actual;
-    if (maxStock !== undefined) item.maxStock = maxStock;
-    item.toComplete = Math.max(0, item.maxStock - item.actual);
-  }
-  farm.updatedAt = todayIso();
   store.reports.push({
     id: crypto.randomUUID(),
     at: new Date().toISOString(),

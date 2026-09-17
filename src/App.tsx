@@ -1,6 +1,6 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { FarmId } from "../shared/types";
-import { USER_KEY } from "./api";
+import { api, USER_KEY } from "./api";
 import { FarmPickScreen } from "./screens/FarmPickScreen";
 import { LoadScreen } from "./screens/LoadScreen";
 import { LoginScreen } from "./screens/LoginScreen";
@@ -9,14 +9,28 @@ import { ReportScreen } from "./screens/ReportScreen";
 
 type Step = "login" | "farm" | "menu" | "report" | "load";
 
+function savedUser() {
+  try {
+    return localStorage.getItem(USER_KEY)?.trim() ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export function App() {
-  const [step, setStep] = useState<Step>("login");
-  const [user, setUser] = useState("");
+  const [user, setUser] = useState(savedUser);
+  const [step, setStep] = useState<Step>(savedUser() ? "farm" : "login");
   const [farmId, setFarmId] = useState<FarmId | null>(null);
 
   const pickUser = useCallback((name: string) => {
     setUser(name);
     setStep("farm");
+  }, []);
+
+  useEffect(() => {
+    const name = savedUser();
+    if (!name) return;
+    api("/api/users", { method: "POST", body: JSON.stringify({ name }) }).catch(() => undefined);
   }, []);
 
   if (step === "login") return <LoginScreen onPick={pickUser} />;

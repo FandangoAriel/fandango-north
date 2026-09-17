@@ -56,7 +56,12 @@ function apiPlugin(): Plugin {
         }
         try {
           if (url.pathname === "/api/users") {
-            send(res, await handleUsers());
+            if (req.method === "POST") {
+              const payload = JSON.parse((await readBody(req)) || "{}");
+              send(res, await handleUsers("POST", payload));
+              return;
+            }
+            send(res, await handleUsers("GET"));
             return;
           }
           if (url.pathname === "/api/inventory") {
