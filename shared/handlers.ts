@@ -15,10 +15,12 @@ import {
   googleListReports,
   googleListUsers,
   googleReportStock,
+  googleSaveDirtyMedia,
   googleSaveLoad,
   googleSaveOrder,
 } from "./google";
-import type { FarmId, LoadMark, StockUpdate } from "./types";
+import type { DirtyMedia, FarmId, LoadMark, StockUpdate } from "./types";
+import { MAX_MEDIA_BYTES, readMediaFile, saveMediaFile } from "./media-store";
 
 const jsonHeaders = {
   "Content-Type": "application/json; charset=utf-8",
@@ -31,6 +33,81 @@ export function json(status: number, body: unknown) {
     headers: jsonHeaders,
     body: JSON.stringify(body),
   };
+}
+
+export function binary(status: number, data: Buffer, mime: string) {
+  return {
+    statusCode: status,
+    headers: {
+      "Content-Type": mime,
+      "Cache-Control": "private, max-age=3600",
+    },
+    body: data.toString("base64"),
+    isBase64Encoded: true,
+  };
+}
+
+type DirtyMediaInput = {
+  id?: string;
+  kind?: "image" | "video";
+  name?: string;
+  mime?: string;
+  data?: string;
+  url?: string;
+};
+
+async function persistDirtyMedia(items: DirtyMediaInput[]): Promise<DirtyMedia[]> {
+  const prepared = items
+    .map((item) => {
+      const id = item.id?.trim() || crypto.randomUUID();
+      const kind = item.kind === "video" ? ("video" as const) : ("image" as const);
+      const name = item.name?.trim() || `${kind}-${id}`;
+      const mime = item.mime?.trim() || (kind === "video" ? "video/mp4" : "image/jpeg");
+      return { id, kind, name, mime, data: item.data, url: item.url };
+    })
+    .filter((item) => item.data || item.url);
+
+  const local: DirtyMedia[] = [];
+  for (const item of prepared) {
+    if (item.data) {
+      const data = Buffer.from(item.data, "base64");
+      if (!data.length || data.length > MAX_MEDIA_BYTES) continue;
+      try {
+        saveMediaFile(item.id, item.mime, data);
+        local.push({
+          id: item.id,
+          kind: item.kind,
+          name: item.name,
+          mime: item.mime,
+          url: `/api/media/${item.id}`,
+        });
+      } catch {
+        // skip broken files
+      }
+    } else if (item.url) {
+      local.push({
+        id: item.id,
+        kind: item.kind,
+        name: item.name,
+        mime: item.mime,
+        url: item.url,
+      });
+    }
+  }
+
+  if (googleConfigured() && !isDemoMode()) {
+    try {
+      const uploaded = await googleSaveDirtyMedia(prepared);
+      if (uploaded.length) {
+        const byId = new Map(local.map((item) => [item.id, item]));
+        for (const item of uploaded) byId.set(item.id, item);
+        return [...byId.values()];
+      }
+    } catch {
+      // keep local urls
+    }
+  }
+  return local;
 }
 
 function farmIdFrom(value: string | null): FarmId {
@@ -70,21 +147,30 @@ export async function handleReport(payload: {
   user?: string;
   note?: string;
   items?: StockUpdate[];
+  dirtyMedia?: DirtyMediaInput[];
 }) {
   const farmId = farmIdFrom(payload.farmId ?? null);
   const items = payload.items ?? [];
   const user = payload.user ?? "";
   const note = payload.note ?? "";
+  const dirtyMedia = await persistDirtyMedia(payload.dirtyMedia ?? []);
   if (googleConfigured() && !isDemoMode()) {
     try {
-      const farm = await googleReportStock(farmId, items, user, note);
-      return json(200, { farm, demo: false });
+      const farm = await googleReportStock(farmId, items, user, note, dirtyMedia);
+      return json(200, { farm, demo: false, dirtyMedia });
     } catch {
       // demo fallback
     }
   }
-  const farm = reportStock(farmId, items, user, note);
-  return json(200, { farm, demo: true });
+  const farm = reportStock(farmId, items, user, note, dirtyMedia);
+  return json(200, { farm, demo: true, dirtyMedia });
+}
+
+export function handleGetMedia(idRaw: string | null) {
+  const id = idRaw?.trim() ?? "";
+  const file = readMediaFile(id);
+  if (!file) return json(404, { error: "not_found" });
+  return binary(200, file.data, file.mime);
 }
 
 export async function handleGetLoad(farmRaw: string | null) {

@@ -9,6 +9,7 @@ import type {
   LoadRecord,
   ReportRecord,
   StockUpdate,
+  DirtyMedia,
 } from "./types";
 import {
   FARM_SHEETS,
@@ -42,7 +43,10 @@ async function accessToken() {
   const client = new JWT({
     email: creds.keys.client_email,
     key: creds.keys.private_key,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    scopes: [
+      "https://www.googleapis.com/auth/spreadsheets",
+      "https://www.googleapis.com/auth/drive.file",
+    ],
   });
   const tokens = await client.authorize();
   if (!tokens.access_token) throw new Error("google_auth_failed");
@@ -95,18 +99,77 @@ const REPORTS_HEADER = [
   "JSON",
   "סוג",
   "ע״י המעמיס",
+  "ציוד מלוכלך",
 ];
+
+async function googleUploadMedia(name: string, mime: string, bytes: Buffer) {
+  const { token } = await accessToken();
+  const boundary = "fandango_media";
+  const meta = JSON.stringify({ name, mimeType: mime });
+  const body = Buffer.concat([
+    Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n`),
+    Buffer.from(`--${boundary}\r\nContent-Type: ${mime}\r\n\r\n`),
+    bytes,
+    Buffer.from(`\r\n--${boundary}--`),
+  ]);
+  const created = await fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,webContentLink",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": `multipart/related; boundary=${boundary}`,
+      },
+      body,
+    },
+  );
+  if (!created.ok) return undefined;
+  const file = (await created.json()) as { id?: string; webViewLink?: string; webContentLink?: string };
+  if (!file.id) return undefined;
+  await fetch(`https://www.googleapis.com/drive/v3/files/${file.id}/permissions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ role: "reader", type: "anyone" }),
+  }).catch(() => undefined);
+  return file.webViewLink || file.webContentLink;
+}
+
+export async function googleSaveDirtyMedia(
+  items: { id: string; kind: "image" | "video"; name: string; mime: string; data?: string; url?: string }[],
+): Promise<DirtyMedia[]> {
+  const saved: DirtyMedia[] = [];
+  for (const item of items) {
+    if (item.url && !item.data) {
+      saved.push({ id: item.id, kind: item.kind, name: item.name, mime: item.mime, url: item.url });
+      continue;
+    }
+    if (!item.data) continue;
+    const bytes = Buffer.from(item.data, "base64");
+    let url: string | undefined;
+    try {
+      url = await googleUploadMedia(item.name || `${item.kind}-${item.id}`, item.mime, bytes);
+    } catch {
+      url = undefined;
+    }
+    if (!url) continue;
+    saved.push({ id: item.id, kind: item.kind, name: item.name, mime: item.mime, url });
+  }
+  return saved;
+}
 
 async function appendReportsLog(row: (string | number)[]) {
   try {
-    const existing = await sheetsGet("דיווחים!A1:I1");
+    const existing = await sheetsGet("דיווחים!A1:J1");
     const first = existing.values?.[0]?.[0]?.trim() ?? "";
     if (!first) {
-      await sheetsUpdate("דיווחים!A1:I1", [REPORTS_HEADER]);
+      await sheetsUpdate("דיווחים!A1:J1", [REPORTS_HEADER]);
     }
   } catch {
     try {
-      await sheetsUpdate("דיווחים!A1:I1", [REPORTS_HEADER]);
+      await sheetsUpdate("דיווחים!A1:J1", [REPORTS_HEADER]);
     } catch {
       // tab may not exist
     }
@@ -229,6 +292,7 @@ export async function googleReportStock(
   updates: StockUpdate[],
   user = "",
   note = "",
+  dirtyMedia: DirtyMedia[] = [],
 ) {
   const farm = await googleGetFarm(farmId);
   const meta = FARM_SHEETS[farmId];
@@ -290,6 +354,7 @@ export async function googleReportStock(
       JSON.stringify(updates),
       "דיווח",
       "",
+      dirtyMedia.length ? JSON.stringify(dirtyMedia) : "",
     ]);
   } catch {
     // tab may not exist yet
@@ -299,7 +364,7 @@ export async function googleReportStock(
 
 export async function googleListReports(farmId: FarmId): Promise<ReportRecord[]> {
   try {
-    const data = await sheetsGet("דיווחים!A2:I200");
+    const data = await sheetsGet("דיווחים!A2:J200");
     const farmName = FARM_SHEETS[farmId].name;
     return (data.values ?? [])
       .filter((row) => row[3] === farmId || row[2] === farmName)
@@ -312,6 +377,13 @@ export async function googleListReports(farmId: FarmId): Promise<ReportRecord[]>
         } catch {
           items = [];
         }
+        let dirtyMedia: DirtyMedia[] | undefined;
+        try {
+          const parsed = JSON.parse(row[9] || "[]") as DirtyMedia[];
+          if (Array.isArray(parsed) && parsed.length) dirtyMedia = parsed;
+        } catch {
+          dirtyMedia = undefined;
+        }
         return {
           id: `${farmId}-report-${index}-${row[0] ?? ""}`,
           at: row[0] || "",
@@ -319,6 +391,7 @@ export async function googleListReports(farmId: FarmId): Promise<ReportRecord[]>
           farmId,
           note: row[4] || undefined,
           items,
+          dirtyMedia,
         };
       })
       .reverse()
