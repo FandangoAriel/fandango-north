@@ -1,15 +1,6 @@
 import {
-  getFarm,
-  getLoadChecklist,
-  isDemoMode,
-  listReports,
-  listUsers,
-  reportStock,
-  saveItemOrder,
-  saveLoad,
-} from "./mock-store";
-import {
   googleConfigured,
+  googleAddUser,
   googleGetFarm,
   googleGetLoad,
   googleListReports,
@@ -21,6 +12,17 @@ import {
 } from "./google";
 import type { DirtyMedia, FarmId, LoadMark, StockUpdate } from "./types";
 import { MAX_MEDIA_BYTES, readMediaFile, saveMediaFile } from "./media-store";
+import {
+  addUser,
+  getFarm,
+  getLoadChecklist,
+  isDemoMode,
+  listReports,
+  listUsers,
+  reportStock,
+  saveItemOrder,
+  saveLoad,
+} from "./mock-store";
 
 const jsonHeaders = {
   "Content-Type": "application/json; charset=utf-8",
@@ -117,11 +119,24 @@ function farmIdFrom(value: string | null): FarmId {
   throw new Error("farm_not_found");
 }
 
-export async function handleUsers() {
+export async function handleUsers(method = "GET", payload?: { name?: string }) {
+  if (method === "POST") {
+    const name = payload?.name?.trim() ?? "";
+    if (!name) return json(400, { error: "missing_name" });
+    if (googleConfigured()) {
+      try {
+        const users = await googleAddUser(name);
+        return json(200, { users, demo: false, name });
+      } catch {
+        // demo fallback
+      }
+    }
+    return json(200, { users: addUser(name), demo: true, name });
+  }
   if (googleConfigured()) {
     try {
       const users = await googleListUsers();
-      if (users.length) return json(200, { users, demo: false });
+      return json(200, { users, demo: false });
     } catch {
       // fall through to demo
     }

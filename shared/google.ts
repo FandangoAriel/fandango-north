@@ -89,6 +89,47 @@ async function sheetsAppend(range: string, values: (string | number)[][]) {
   if (!res.ok) throw new Error(`sheets_append_${res.status}`);
 }
 
+function quoteSheet(title: string) {
+  return `'${title.replace(/'/g, "''")}'`;
+}
+
+export function reportSheetTitle(farmName: string, at = new Date()) {
+  const day = String(at.getDate()).padStart(2, "0");
+  const month = String(at.getMonth() + 1).padStart(2, "0");
+  return `${farmName} ${day}-${month}-${at.getFullYear()}`;
+}
+
+async function listSheetTitles() {
+  const { token, spreadsheetId } = await accessToken();
+  const res = await fetch(`${SHEETS_API}/${spreadsheetId}?fields=sheets.properties.title`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`sheets_meta_${res.status}`);
+  const data = (await res.json()) as { sheets?: { properties?: { title?: string } }[] };
+  return (data.sheets ?? []).map((sheet) => sheet.properties?.title ?? "").filter(Boolean);
+}
+
+async function ensureSheet(title: string) {
+  const titles = await listSheetTitles();
+  if (titles.includes(title)) return;
+  const { token, spreadsheetId } = await accessToken();
+  const res = await fetch(`${SHEETS_API}/${spreadsheetId}:batchUpdate`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      requests: [{ addSheet: { properties: { title, rightToLeft: true } } }],
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    if (res.status === 400 && /already exists/i.test(text)) return;
+    throw new Error(`sheets_add_${res.status}`);
+  }
+}
+
 const REPORTS_HEADER = [
   "תאריך",
   "משתמש",
@@ -183,8 +224,31 @@ function parseNumber(value: string | undefined) {
 }
 
 export async function googleListUsers(): Promise<string[]> {
-  const data = await sheetsGet("משתמשים!A2:A11");
-  return (data.values ?? []).map((row) => row[0]?.trim()).filter(Boolean).slice(0, 10);
+  try {
+    const data = await sheetsGet("משתמשים!A1:A200");
+    const rows = data.values ?? [];
+    const start = rows[0]?.[0]?.trim() === "שם" ? 1 : 0;
+    return rows
+      .slice(start)
+      .map((row) => row[0]?.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+export async function googleAddUser(name: string) {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("missing_name");
+  await ensureSheet("משתמשים");
+  const header = await sheetsGet("משתמשים!A1");
+  if (!header.values?.[0]?.[0]?.trim()) {
+    await sheetsUpdate("משתמשים!A1", [["שם"]]);
+  }
+  const existing = await googleListUsers();
+  if (existing.some((user) => user.toLowerCase() === trimmed.toLowerCase())) return existing;
+  await sheetsAppend("משתמשים!A1", [[trimmed]]);
+  return [...existing, trimmed];
 }
 
 function uniqueEquipmentId(farmId: FarmId, name: string, used: Set<string>) {
@@ -295,52 +359,58 @@ export async function googleReportStock(
   dirtyMedia: DirtyMedia[] = [],
 ) {
   const farm = await googleGetFarm(farmId);
-  const meta = FARM_SHEETS[farmId];
-  const data = await sheetsGet(`'${meta.sheet}'!A${meta.startRow}:C200`);
-  const rows = data.values ?? [];
-  const byName = new Map<string, StockUpdate>();
-  for (const item of updates) {
-    const found = farm.equipment.find((row) => row.id === item.id);
-    const name = (item.name || found?.name || "").trim();
-    if (name) byName.set(name, item);
+  const farmName = FARM_SHEETS[farmId].name;
+  const at = new Date();
+  const title = reportSheetTitle(farmName, at);
+  await ensureSheet(title);
+  const quoted = quoteSheet(title);
+  let last = 0;
+  try {
+    const colA = await sheetsGet(`${quoted}!A:A`);
+    last = colA.values?.length ?? 0;
+  } catch {
+    last = 0;
   }
-  const existingNames = new Set<string>();
-  let lastNamed = -1;
-  for (let i = 0; i < rows.length; i += 1) {
-    const name = rows[i]?.[0]?.trim();
-    if (!name) continue;
-    existingNames.add(name);
-    lastNamed = i;
-    const update = byName.get(name);
-    if (!update) continue;
-    const rowNumber = meta.startRow + i;
-    if (update.actual !== undefined && update.maxStock !== undefined) {
-      await sheetsUpdate(`'${meta.sheet}'!B${rowNumber}:C${rowNumber}`, [[update.actual, update.maxStock]]);
-    } else if (update.actual !== undefined) {
-      await sheetsUpdate(`'${meta.sheet}'!B${rowNumber}`, [[update.actual]]);
-    } else if (update.maxStock !== undefined) {
-      await sheetsUpdate(`'${meta.sheet}'!C${rowNumber}`, [[update.maxStock]]);
-    }
+  const start = last ? last + 2 : 1;
+  const byId = new Map(updates.map((item) => [item.id, item]));
+  const byName = new Map(updates.map((item) => [(item.name ?? "").trim(), item]));
+  const seen = new Set<string>();
+  const table: (string | number)[][] = [];
+  for (const item of farm.equipment) {
+    const update = byId.get(item.id) ?? byName.get(item.name);
+    seen.add(item.name);
+    table.push([
+      item.name,
+      update?.actual === undefined ? "" : update.actual,
+      update?.maxStock === undefined ? item.maxStock : update.maxStock,
+    ]);
   }
-  const added: (string | number)[][] = [];
-  for (const item of updates) {
-    const found = farm.equipment.find((row) => row.id === item.id);
-    const name = (item.name || found?.name || "").trim();
-    if (!name || existingNames.has(name)) continue;
-    if (!item.isNew && found) continue;
-    existingNames.add(name);
-    added.push([name, item.actual ?? 0, item.maxStock ?? item.actual ?? 0]);
+  for (const update of updates) {
+    const name = (update.name ?? "").trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    table.push([name, update.actual ?? "", update.maxStock ?? update.actual ?? ""]);
   }
-  if (added.length) {
-    const start = meta.startRow + lastNamed + 1;
-    await sheetsUpdate(`'${meta.sheet}'!A${start}:C${start + added.length - 1}`, added);
-  }
-  await sheetsUpdate(`'${meta.sheet}'!C1`, [[todayIso()]]);
+  const time = at.toLocaleString("he-IL", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const block: (string | number)[][] = [
+    ["דיווח מלאי", farmName, time, user],
+    ["הערה", note],
+    ["ציוד מלוכלך", dirtyMedia.map((item) => item.url).filter(Boolean).join(" ")],
+    ["פריט", "מלאי קיים", "מקס"],
+    ...table,
+  ];
+  await sheetsUpdate(`${quoted}!A${start}`, block);
   try {
     await appendReportsLog([
-      new Date().toISOString(),
+      at.toISOString(),
       user,
-      FARM_SHEETS[farmId].name,
+      farmName,
       farmId,
       note,
       updates
@@ -359,7 +429,7 @@ export async function googleReportStock(
   } catch {
     // tab may not exist yet
   }
-  return googleGetFarm(farmId);
+  return farm;
 }
 
 export async function googleListReports(farmId: FarmId): Promise<ReportRecord[]> {
