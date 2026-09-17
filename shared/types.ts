@@ -7,7 +7,7 @@ export interface EquipmentItem {
   name: string;
   actual: number;
   maxStock: number;
-  /** כמות להשלמה מעמודה F בגיליון (לא D). */
+  /** כמות להשלמה מהגיליון, או מקס פחות מלאי קיים. */
   toComplete: number;
 }
 
@@ -93,25 +93,29 @@ export const FARM_SHEETS: Record<
     name: string;
     sheet: string;
     startRow: number;
+    equipment: { name: number; actual: number; maxStock: number; complete: number };
     container: { customerId: number; customerName: number; type: number; supplied: number };
   }
 > = {
   "beit-haemek": {
     name: "בית העמק",
     sheet: "בית העמק",
-    startRow: 6,
-    container: { customerId: 8, customerName: 9, type: 10, supplied: 12 },
+    startRow: 4,
+    equipment: { name: 1, actual: 2, maxStock: 3, complete: 5 },
+    container: { customerId: 8, customerName: 8, type: 9, supplied: 10 },
   },
   "lehavot-haviva": {
     name: "להבות חביבה",
     sheet: "להבות חביבה",
-    startRow: 6,
-    container: { customerId: 7, customerName: 8, type: 9, supplied: 11 },
+    startRow: 4,
+    equipment: { name: 1, actual: 2, maxStock: 3, complete: 5 },
+    container: { customerId: 8, customerName: 8, type: 9, supplied: 10 },
   },
   "kfar-hasidim": {
     name: "כפר חסידים",
     sheet: "כפר חסידים",
-    startRow: 5,
+    startRow: 4,
+    equipment: { name: 0, actual: 1, maxStock: 2, complete: 3 },
     container: { customerId: 6, customerName: 7, type: 8, supplied: 10 },
   },
 };
