@@ -13,6 +13,7 @@ export function loadWhatsAppText(
   items: LoadItem[],
   note = "",
   byLoader = false,
+  dirtyMedia: { name: string; url: string }[] = [],
 ) {
   const lines = [`העמסה · ${farmName}`, `${user} · ${new Date().toLocaleString("he-IL")}`, ""];
   const stock = items.filter((item) => item.kind === "stock");
@@ -43,6 +44,12 @@ export function loadWhatsAppText(
   }
   if (note.trim()) lines.push(`הערה: ${note.trim()}`);
   if (byLoader) lines.push("ע״י המעמיס");
+  if (dirtyMedia.length) {
+    lines.push("", "ציוד מלוכלך:");
+    for (const item of dirtyMedia) {
+      lines.push(item.url || item.name);
+    }
+  }
   return lines.join("\n").trim();
 }
 

@@ -19,7 +19,7 @@ import {
   googleSaveLoad,
   googleSaveOrder,
 } from "./google";
-import type { DirtyMedia, FarmId, LoadMark, StockUpdate } from "./types";
+import { dirtyMediaFromReports, type DirtyMedia, type FarmId, type LoadMark, type StockUpdate } from "./types";
 import { MAX_MEDIA_BYTES, readMediaFile, saveMediaFile } from "./media-store";
 
 const jsonHeaders = {
@@ -178,9 +178,11 @@ export async function handleGetLoad(farmRaw: string | null) {
   if (googleConfigured() && !isDemoMode()) {
     try {
       const farm = await googleGetFarm(farmId);
+      const reports = await googleListReports(farmId).catch(() => []);
       return json(200, {
         items: await googleGetLoad(farmId),
         equipmentIds: farm.equipment.map((item) => item.id),
+        dirtyMedia: dirtyMediaFromReports(reports),
         demo: false,
       });
     } catch {
@@ -191,6 +193,7 @@ export async function handleGetLoad(farmRaw: string | null) {
   return json(200, {
     items: getLoadChecklist(farmId),
     equipmentIds: farm.equipment.map((item) => item.id),
+    dirtyMedia: dirtyMediaFromReports(listReports(farmId)),
     demo: true,
   });
 }

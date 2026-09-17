@@ -128,7 +128,8 @@ async function googleUploadMedia(name: string, mime: string, bytes: Buffer) {
     },
     body: JSON.stringify({ role: "reader", type: "anyone" }),
   }).catch(() => undefined);
-  return file.webViewLink || file.webContentLink;
+  if (file.id) return `https://drive.google.com/uc?id=${file.id}&export=view`;
+  return file.webContentLink || file.webViewLink;
 }
 
 export async function googleSaveDirtyMedia(

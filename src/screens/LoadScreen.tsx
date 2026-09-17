@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Farm, FarmId, LoadItem } from "../../shared/types";
+import type { DirtyMedia, Farm, FarmId, LoadItem } from "../../shared/types";
 import { FARM_SHEETS, mergeSubsetOrder, nextLoadMark } from "../../shared/types";
 import { loadWhatsAppText, whatsAppUrl } from "../../shared/summary";
 import { api } from "../api";
@@ -7,6 +7,7 @@ import {
   ChipButton,
   CompactQty,
   ConfirmBar,
+  DirtyMediaGallery,
   NoteField,
   PrimaryButton,
   Screen,
@@ -101,6 +102,7 @@ export function LoadScreen({
 }) {
   const [items, setItems] = useState<LoadItem[]>([]);
   const [equipmentIds, setEquipmentIds] = useState<string[]>([]);
+  const [dirtyMedia, setDirtyMedia] = useState<DirtyMedia[]>([]);
   const [demo, setDemo] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -112,8 +114,9 @@ export function LoadScreen({
   const [saved, setSaved] = useState(false);
 
   function loadList(keepMarks = false) {
-    return api<{ items: LoadItem[]; equipmentIds?: string[]; demo: boolean }>(`/api/load?farm=${farmId}`).then(
-      (data) => {
+    return api<{ items: LoadItem[]; equipmentIds?: string[]; dirtyMedia?: DirtyMedia[]; demo: boolean }>(
+      `/api/load?farm=${farmId}`,
+    ).then((data) => {
         setItems((current) => {
           const prev = new Map(current.map((item) => [item.itemId, item]));
           return data.items.map((item) => {
@@ -128,6 +131,7 @@ export function LoadScreen({
         setEquipmentIds(
           data.equipmentIds ?? data.items.filter((item) => item.kind === "stock").map((item) => item.itemId),
         );
+        setDirtyMedia(data.dirtyMedia ?? []);
         setDemo(data.demo);
       },
     );
@@ -145,7 +149,7 @@ export function LoadScreen({
   const markedCount = items.filter((item) => item.mark !== "unset").length;
   const containers = items.filter((item) => item.kind === "container");
   const stock = items.filter((item) => item.kind === "stock");
-  const waHref = whatsAppUrl(loadWhatsAppText(FARM_SHEETS[farmId].name, user, items, note, byLoader));
+  const waHref = whatsAppUrl(loadWhatsAppText(FARM_SHEETS[farmId].name, user, items, note, byLoader, dirtyMedia));
 
   function cycle(id: string) {
     setWarn("");
@@ -241,6 +245,15 @@ export function LoadScreen({
       {message && (
         <p className="rounded-md bg-emerald-50 px-2 py-1 text-[12px] text-emerald-800">{message}</p>
       )}
+      <div className="flex items-center justify-between gap-2 text-[12px] text-black/60">
+        <span>
+          {items.length ? `סומנו ${markedCount} מתוך ${items.length}` : "אין פריטים להעמסה"}
+        </span>
+        <ChipButton onClick={() => loadList(true).catch(() => setError("הרענון נכשל"))}>
+          רענון מהגיליון
+        </ChipButton>
+      </div>
+      <DirtyMediaGallery items={dirtyMedia} />
       {items.length === 0 ? (
         <div className="rounded-lg border border-dashed border-black/15 bg-white px-3 py-6 text-center">
           <p className="text-sm font-medium">אין מה להעמיס לחווה זו</p>
@@ -248,14 +261,6 @@ export function LoadScreen({
         </div>
       ) : (
         <>
-          <div className="flex items-center justify-between gap-2 text-[12px] text-black/60">
-            <span>
-              סומנו {markedCount} מתוך {items.length}
-            </span>
-            <ChipButton onClick={() => loadList(true).catch(() => setError("הרענון נכשל"))}>
-              רענון מהגיליון
-            </ChipButton>
-          </div>
           {containers.length > 0 && (
             <section>
               <h2 className="mb-0.5 text-[11px] font-semibold text-[#3d6b4a]">מיכלים משולטים</h2>
