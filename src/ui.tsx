@@ -18,8 +18,8 @@ export function Screen({
   brand?: boolean;
 }) {
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col overflow-x-hidden overscroll-y-contain px-3 pb-4 pt-[max(0.5rem,env(safe-area-inset-top))]">
-      <header className="mb-2">
+    <div className="mx-auto flex h-full w-full max-w-md flex-col overflow-hidden px-3 pt-[max(0.5rem,env(safe-area-inset-top))]">
+      <header className="mb-2 shrink-0">
         {onBack && (
           <button
             type="button"
@@ -46,7 +46,9 @@ export function Screen({
           </p>
         )}
       </header>
-      <main className="flex flex-1 flex-col gap-2">{children}</main>
+      <main className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain pb-4 [-webkit-overflow-scrolling:touch]">
+        {children}
+      </main>
     </div>
   );
 }

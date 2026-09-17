@@ -55,6 +55,7 @@ export function SortableRow({
     zIndex: isDragging ? 2 : undefined,
     opacity: isDragging ? 0.88 : 1,
     position: "relative",
+    touchAction: "pan-y",
   };
   const grip = (
     <button

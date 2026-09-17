@@ -492,7 +492,7 @@ export function ReportScreen({
           עורכים דיווח מ־{formatWhen(editingReport.at)}. שמירה כותבת מחדש לגיליון.
         </p>
       )}
-      <div className={`overflow-hidden rounded-lg bg-white ${reorderMode ? "" : "touch-pan-y"}`}>
+      <div className="overflow-hidden rounded-lg bg-white">
         <div className={`${ROW} border-b border-black/15 bg-[#f8f4ea] text-[10px] font-semibold text-black/55`}>
           <span />
           <span>פריט</span>
