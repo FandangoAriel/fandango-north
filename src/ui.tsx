@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Camera, Video, X } from "lucide-react";
 import type { LoadMark, DirtyMedia } from "../shared/types";
 import { mediaPreviewUrl } from "../shared/types";
@@ -345,35 +345,44 @@ export function DirtyMediaGallery({ items }: { items: DirtyMedia[] }) {
       <h2 className="mb-0.5 text-[11px] font-semibold text-[#3d6b4a]">ציוד מלוכלך מהדיווח</h2>
       <p className="mb-1 text-[11px] text-black/45">מה שצילם המדווח — כדי שהמעמיס יראה לפני היציאה.</p>
       <div className="grid gap-2">
-        {items.map((item) => {
-          const src = mediaPreviewUrl(item);
-          const drive = Boolean(item.url.match(/drive\.google\.com|googleusercontent\.com/));
-          const caption = [item.user, formatMediaWhen(item.at)].filter(Boolean).join(" · ");
-          return (
-            <figure key={item.id} className="overflow-hidden rounded-lg bg-white">
-              {item.kind === "video" && drive ? (
-                <iframe
-                  title={item.name}
-                  src={src}
-                  className="h-48 w-full bg-black"
-                  allow="autoplay; encrypted-media"
-                  allowFullScreen
-                />
-              ) : item.kind === "video" ? (
-                <video src={src} controls className="max-h-48 w-full bg-black" />
-              ) : (
-                <a href={item.url} target="_blank" rel="noreferrer">
-                  <img src={src} alt={item.name} className="max-h-48 w-full object-cover" />
-                </a>
-              )}
-              {caption ? (
-                <figcaption className="px-2 py-1 text-[11px] text-black/55">{caption}</figcaption>
-              ) : null}
-            </figure>
-          );
-        })}
+        {items.map((item) => (
+          <DirtyMediaFigure key={item.id} item={item} />
+        ))}
       </div>
     </section>
+  );
+}
+
+function DirtyMediaFigure({ item }: { item: DirtyMedia }) {
+  const [broken, setBroken] = useState(false);
+  const src = mediaPreviewUrl(item);
+  const openUrl = item.url.startsWith("http") ? item.url : src;
+  const caption = [item.user, formatMediaWhen(item.at)].filter(Boolean).join(" · ");
+  return (
+    <figure className="overflow-hidden rounded-lg bg-white">
+      {broken ? (
+        <a
+          href={openUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="flex min-h-24 items-center justify-center px-3 py-6 text-center text-[13px] font-medium text-[#3d6b4a]"
+        >
+          פתיחת {item.kind === "video" ? "הסרטון" : "התמונה"}
+        </a>
+      ) : item.kind === "video" ? (
+        <video src={src} controls className="max-h-48 w-full bg-black" onError={() => setBroken(true)} />
+      ) : (
+        <a href={openUrl} target="_blank" rel="noreferrer">
+          <img src={src} alt={item.name} className="max-h-48 w-full object-cover" onError={() => setBroken(true)} />
+        </a>
+      )}
+      <figcaption className="flex items-center justify-between gap-2 px-2 py-1 text-[11px] text-black/55">
+        <span>{caption}</span>
+        <a href={openUrl} target="_blank" rel="noreferrer" className="shrink-0 text-[#3d6b4a]">
+          פתיחה
+        </a>
+      </figcaption>
+    </figure>
   );
 }
 
