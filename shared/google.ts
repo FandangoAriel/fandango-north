@@ -11,14 +11,8 @@ import type {
   StockUpdate,
   DirtyMedia,
 } from "./types";
-import {
-  FARM_SHEETS,
-  applyItemOrder,
-  completeFromRow,
-  farmLoadItems,
-  isSuppliedFlag,
-  todayIso,
-} from "./types";
+import { FARM_SHEETS, applyItemOrder, farmLoadItems, todayIso } from "./types";
+import { parseFarmSheet } from "./sheet-layout";
 
 const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
 
@@ -177,11 +171,6 @@ async function appendReportsLog(row: (string | number)[]) {
   await sheetsAppend("דיווחים!A1", [row]);
 }
 
-function parseNumber(value: string | undefined) {
-  const n = Number(String(value ?? "").replace(",", ""));
-  return Number.isFinite(n) ? n : 0;
-}
-
 export async function googleListUsers(): Promise<string[]> {
   const data = await sheetsGet("משתמשים!A2:A11");
   return (data.values ?? []).map((row) => row[0]?.trim()).filter(Boolean).slice(0, 10);
@@ -233,54 +222,22 @@ export async function googleSaveOrder(farmId: FarmId, itemIds: string[]) {
 
 export async function googleGetFarm(farmId: FarmId): Promise<Farm> {
   const meta = FARM_SHEETS[farmId];
-  const data = await sheetsGet(`'${meta.sheet}'!A1:M200`);
-  const rows = data.values ?? [];
-  const updatedRaw = rows[0]?.[2] ?? todayIso();
-  let updatedAt = todayIso();
-  if (updatedRaw) {
-    const parsed = new Date(updatedRaw);
-    if (!Number.isNaN(parsed.getTime())) {
-      updatedAt = parsed.toISOString().slice(0, 10);
-    }
-  }
-  const equipment: EquipmentItem[] = [];
-  const containers: LabeledContainer[] = [];
+  const data = await sheetsGet(`'${meta.sheet}'!A1:P200`);
+  const parsed = parseFarmSheet(farmId, data.values ?? []);
   const usedIds = new Set<string>();
-  for (let i = meta.startRow - 1; i < rows.length; i += 1) {
-    const name = rows[i]?.[0]?.trim();
-    if (name) {
-      const actual = parseNumber(rows[i]?.[1]);
-      const maxStock = parseNumber(rows[i]?.[2]);
-      equipment.push({
-        id: uniqueEquipmentId(farmId, name, usedIds),
-        name,
-        actual,
-        maxStock,
-        toComplete: completeFromRow(rows[i], actual, maxStock),
-      });
-    }
-    const customerName = rows[i]?.[meta.container.customerName]?.trim() ?? "";
-    const fromTypeCol = rows[i]?.[meta.container.type]?.trim() ?? "";
-    const fromColJ = rows[i]?.[9]?.trim() ?? "";
-    const containerType =
-      (fromTypeCol && fromTypeCol !== customerName ? fromTypeCol : "") ||
-      (fromColJ && fromColJ !== customerName ? fromColJ : "") ||
-      fromTypeCol;
-    if (customerName || containerType) {
-      containers.push({
-        id: `${farmId}-c-${i}`,
-        customerId: rows[i]?.[meta.container.customerId]?.trim() ?? "",
-        customerName,
-        containerType,
-        supplied: isSuppliedFlag(rows[i]?.[meta.container.supplied]),
-      });
-    }
-  }
+  const equipment: EquipmentItem[] = parsed.equipment.map((item) => ({
+    ...item,
+    id: uniqueEquipmentId(farmId, item.name, usedIds),
+  }));
+  const containers: LabeledContainer[] = parsed.containers.map((item, index) => ({
+    ...item,
+    id: `${farmId}-c-${index}`,
+  }));
   const itemOrder = await googleGetOrder(farmId);
   return {
     id: farmId,
     name: meta.name,
-    updatedAt,
+    updatedAt: parsed.updatedAt,
     equipment: applyItemOrder(equipment, itemOrder),
     containers,
     itemOrder,
