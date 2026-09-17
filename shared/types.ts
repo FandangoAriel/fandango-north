@@ -56,6 +56,14 @@ export interface StockUpdate {
   isNew?: boolean;
 }
 
+export interface DirtyMedia {
+  id: string;
+  kind: "image" | "video";
+  name: string;
+  mime: string;
+  url: string;
+}
+
 export function isNewEquipmentId(id: string) {
   return id.startsWith("new:");
 }
@@ -69,6 +77,7 @@ export interface ReportRecord {
   kind?: "inventory" | "load";
   byLoader?: boolean;
   items: StockUpdate[];
+  dirtyMedia?: DirtyMedia[];
 }
 
 export interface AppStore {

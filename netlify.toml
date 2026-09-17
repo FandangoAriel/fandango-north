@@ -43,6 +43,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/media/*"
+  to = "/.netlify/functions/media"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

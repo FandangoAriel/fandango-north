@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createSeedStore } from "./seed";
-import type { AppStore, FarmId, LoadItem, LoadMark, LoadRecord, ReportRecord, StockUpdate } from "./types";
+import type { AppStore, DirtyMedia, FarmId, LoadItem, LoadMark, LoadRecord, ReportRecord, StockUpdate } from "./types";
 import { applyItemOrder, farmLoadItems, isNewEquipmentId, todayIso } from "./types";
 
 const STORE_PATH = join(process.cwd(), ".data", "store.json");
@@ -81,6 +81,7 @@ export function reportStock(
   updates: StockUpdate[],
   user = "",
   note = "",
+  dirtyMedia: DirtyMedia[] = [],
 ) {
   const store = readStore();
   const farm = store.farms.find((item) => item.id === farmId);
@@ -135,6 +136,7 @@ export function reportStock(
     note: note.trim() || undefined,
     items: updates,
     kind: "inventory" as const,
+    dirtyMedia: dirtyMedia.length ? dirtyMedia : undefined,
   });
   writeStore(store);
   return getFarm(farmId);

@@ -3,6 +3,7 @@ import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import {
+  handleGetMedia,
   handleGetLoad,
   handleInventory,
   handleListReports,
@@ -13,12 +14,15 @@ import {
   json,
 } from "./shared/handlers";
 
-function send(res: ServerResponse, result: { statusCode: number; headers: Record<string, string>; body: string }) {
+function send(
+  res: ServerResponse,
+  result: { statusCode: number; headers: Record<string, string>; body: string; isBase64Encoded?: boolean },
+) {
   res.statusCode = result.statusCode;
   for (const [key, value] of Object.entries(result.headers)) {
     res.setHeader(key, value);
   }
-  res.end(result.body);
+  res.end(result.isBase64Encoded ? Buffer.from(result.body, "base64") : result.body);
 }
 
 function readBody(req: IncomingMessage) {
@@ -62,6 +66,10 @@ function apiPlugin(): Plugin {
           if (url.pathname === "/api/report" && req.method === "POST") {
             const payload = JSON.parse((await readBody(req)) || "{}");
             send(res, await handleReport(payload));
+            return;
+          }
+          if (url.pathname.startsWith("/api/media/")) {
+            send(res, handleGetMedia(url.pathname.slice("/api/media/".length)));
             return;
           }
           if (url.pathname === "/api/load" && req.method === "GET") {

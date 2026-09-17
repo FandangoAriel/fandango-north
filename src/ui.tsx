@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Camera, Video, X } from "lucide-react";
 import type { LoadMark } from "../shared/types";
 
 export function Screen({
@@ -86,6 +87,7 @@ export function ChipButton({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={`min-h-8 rounded-lg border px-2.5 text-[12px] font-medium ${
         active
           ? "border-[#3d6b4a] bg-[#3d6b4a] text-white"
@@ -241,6 +243,82 @@ export function NoteField({
         rows={2}
         className="w-full resize-y rounded-lg border border-black/15 bg-white px-2 py-1.5 text-[13px] leading-snug"
       />
+    </div>
+  );
+}
+
+export type DirtyMediaDraft = {
+  id: string;
+  kind: "image" | "video";
+  name: string;
+  previewUrl: string;
+};
+
+export function DirtyMediaField({
+  items,
+  onAdd,
+  onRemove,
+}: {
+  items: DirtyMediaDraft[];
+  onAdd: (files: File[]) => void;
+  onRemove: (id: string) => void;
+}) {
+  function pick(kind: "image" | "video", files: FileList | null) {
+    if (!files?.length) return;
+    onAdd([...files]);
+    const input = document.getElementById(kind === "image" ? "dirty-photo" : "dirty-video") as HTMLInputElement | null;
+    if (input) input.value = "";
+  }
+
+  return (
+    <div>
+      <span className="text-[11px] text-black/50">ציוד מלוכלך</span>
+      <p className="mb-1 text-[11px] text-black/45">צלמו או צרפו תמונה או סרטון אחרי ההערה.</p>
+      <div className="flex flex-wrap gap-2">
+        <label className="inline-flex min-h-8 cursor-pointer items-center gap-1 rounded-lg border border-[#3d6b4a] bg-white px-2.5 text-[12px] font-medium text-[#3d6b4a]">
+          <Camera size={14} strokeWidth={2.2} />
+          תמונה
+          <input
+            id="dirty-photo"
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            onChange={(event) => pick("image", event.target.files)}
+          />
+        </label>
+        <label className="inline-flex min-h-8 cursor-pointer items-center gap-1 rounded-lg border border-[#3d6b4a] bg-white px-2.5 text-[12px] font-medium text-[#3d6b4a]">
+          <Video size={14} strokeWidth={2.2} />
+          סרטון
+          <input
+            id="dirty-video"
+            type="file"
+            accept="video/*"
+            className="sr-only"
+            onChange={(event) => pick("video", event.target.files)}
+          />
+        </label>
+      </div>
+      {items.length > 0 && (
+        <div className="mt-2 grid gap-2">
+          {items.map((item) => (
+            <div key={item.id} className="relative overflow-hidden rounded-lg bg-white">
+              {item.kind === "video" ? (
+                <video src={item.previewUrl} controls className="max-h-48 w-full bg-black" />
+              ) : (
+                <img src={item.previewUrl} alt={item.name} className="max-h-48 w-full object-cover" />
+              )}
+              <button
+                type="button"
+                aria-label={`הסרת ${item.name}`}
+                onClick={() => onRemove(item.id)}
+                className="absolute start-1 top-1 flex size-7 items-center justify-center rounded-md bg-black/55 text-white"
+              >
+                <X size={14} strokeWidth={2.4} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
