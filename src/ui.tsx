@@ -46,7 +46,7 @@ export function Screen({
           </p>
         )}
       </header>
-      <main className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain pb-4 [-webkit-overflow-scrolling:touch]">
+      <main className="flex min-h-0 flex-1 flex-col gap-2 overflow-x-hidden overflow-y-auto overscroll-y-contain pb-4 touch-pan-y [&>*]:shrink-0 [-webkit-overflow-scrolling:touch]">
         {children}
       </main>
     </div>
