@@ -22,10 +22,12 @@ function readStore(): AppStore {
             const seeded = fromSeed?.equipment.find((row) => row.id === item.id);
             return {
               ...item,
-              toComplete:
+              toComplete: Math.max(
+                0,
                 typeof item.toComplete === "number"
                   ? item.toComplete
                   : (seeded?.toComplete ?? Math.max(0, item.maxStock - item.actual)),
+              ),
             };
           }),
           farm.itemOrder ?? fromSeed?.itemOrder,

@@ -1,5 +1,5 @@
 import type { FarmId, LabeledContainer } from "./types";
-import { FARM_SHEETS, isSuppliedFlag, parseCompleteCell, todayIso } from "./types";
+import { FARM_SHEETS, isSuppliedFlag, parseCompleteCell, toBringQty, todayIso } from "./types";
 
 export type SheetRow = (string | undefined)[];
 
@@ -240,6 +240,17 @@ function parseSheetNumber(value: string | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+export function columnA1(index: number): string {
+  let n = index + 1;
+  let s = "";
+  while (n > 0) {
+    n -= 1;
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26);
+  }
+  return s;
+}
+
 function findUpdatedAt(rows: SheetRow[]): string {
   for (const row of rows.slice(0, 3)) {
     for (const value of row ?? []) {
@@ -272,7 +283,7 @@ export function parseFarmSheet(farmId: FarmId, rows: SheetRow[]): ParsedFarmShee
         name,
         actual,
         maxStock,
-        toComplete: fromComplete !== null ? fromComplete : Math.max(0, maxStock - actual),
+        toComplete: toBringQty(actual, maxStock, fromComplete),
       });
     }
 

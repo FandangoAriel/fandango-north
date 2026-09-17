@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { detectSheetLayout, parseFarmSheet } from "./sheet-layout";
+import { detectSheetLayout, parseFarmSheet, columnA1 } from "./sheet-layout";
+import { toBringQty } from "./types";
 
 const beitHaemek: string[][] = [
   ["", "בית העמק", "", "17/09/2026"],
@@ -32,6 +33,7 @@ const namedMax: string[][] = [
   assert.equal(parsed.equipment[0]?.maxStock, 40);
   assert.equal(parsed.equipment[1]?.name, "עגלות לחביות");
   assert.equal(parsed.equipment[1]?.maxStock, 20);
+  assert.equal(parsed.equipment[1]?.toComplete, 0);
   assert.ok(!parsed.equipment.some((item) => /^\d+$/.test(item.name)));
   assert.equal(parsed.updatedAt, "2026-09-17");
   assert.equal(parsed.containers.length, 2);
@@ -58,6 +60,13 @@ const namedMax: string[][] = [
   assert.equal(parsed.equipment[0]?.name, "חביות");
   assert.equal(parsed.equipment[0]?.maxStock, 40);
   assert.equal(parsed.equipment[0]?.actual, 23);
+  assert.equal(parsed.equipment[1]?.toComplete, 0);
 }
+
+assert.equal(toBringQty(21, 20), 0);
+assert.equal(toBringQty(21, 20, -1), 0);
+assert.equal(toBringQty(23, 40, 17), 17);
+assert.equal(columnA1(0), "A");
+assert.equal(columnA1(5), "F");
 
 console.log("sheet-layout tests passed");
