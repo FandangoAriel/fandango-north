@@ -325,15 +325,18 @@ export async function googleSaveDirtyMedia(
         driveUrl = undefined;
       }
     }
+    const payload = {
+      id: item.id,
+      kind: item.kind,
+      name: item.name,
+      mime: item.mime,
+      driveUrl,
+      data: item.data,
+    };
+    let stored = false;
     try {
-      await writeSheetMedia({
-        id: item.id,
-        kind: item.kind,
-        name: item.name,
-        mime: item.mime,
-        driveUrl,
-        data: item.data,
-      });
+      await writeSheetMedia(payload);
+      stored = true;
     } catch {
       if (!driveUrl) {
         try {
@@ -342,7 +345,22 @@ export async function googleSaveDirtyMedia(
           driveUrl = undefined;
         }
       }
+      if (driveUrl) {
+        try {
+          await writeSheetMedia({ ...payload, driveUrl, data: fitsSheet ? item.data : undefined });
+          stored = true;
+        } catch {
+          stored = false;
+        }
+      }
     }
+    saved.push({
+      id: item.id,
+      kind: item.kind,
+      name: item.name,
+      mime: item.mime,
+      url: driveUrl && !stored ? driveUrl : mediaApiUrl(item.id),
+    });
     saved.push({
       id: item.id,
       kind: item.kind,
