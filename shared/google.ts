@@ -11,8 +11,8 @@ import type {
   StockUpdate,
   DirtyMedia,
 } from "./types";
-import { FARM_SHEETS, applyItemOrder, farmLoadItems, todayIso } from "./types";
-import { parseFarmSheet } from "./sheet-layout";
+import { FARM_SHEETS, applyItemOrder, farmLoadItems, todayIso, toBringQty } from "./types";
+import { columnA1, parseFarmSheet } from "./sheet-layout";
 
 const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
 
@@ -254,44 +254,53 @@ export async function googleReportStock(
 ) {
   const farm = await googleGetFarm(farmId);
   const meta = FARM_SHEETS[farmId];
-  const data = await sheetsGet(`'${meta.sheet}'!A${meta.startRow}:C200`);
+  const data = await sheetsGet(`'${meta.sheet}'!A1:P200`);
   const rows = data.values ?? [];
+  const layout = parseFarmSheet(farmId, rows).layout;
   const byName = new Map<string, StockUpdate>();
   for (const item of updates) {
     const found = farm.equipment.find((row) => row.id === item.id);
     const name = (item.name || found?.name || "").trim();
     if (name) byName.set(name, item);
   }
-  const existingNames = new Set<string>();
-  let lastNamed = -1;
-  for (let i = 0; i < rows.length; i += 1) {
-    const name = rows[i]?.[0]?.trim();
+  const rowByName = new Map<string, number>();
+  let lastIndex = layout.headerRow;
+  for (let i = layout.headerRow + 1; i < rows.length; i += 1) {
+    const name = String(rows[i]?.[layout.nameCol] ?? "").trim();
     if (!name) continue;
-    existingNames.add(name);
-    lastNamed = i;
-    const update = byName.get(name);
-    if (!update) continue;
-    const rowNumber = meta.startRow + i;
-    if (update.actual !== undefined && update.maxStock !== undefined) {
-      await sheetsUpdate(`'${meta.sheet}'!B${rowNumber}:C${rowNumber}`, [[update.actual, update.maxStock]]);
-    } else if (update.actual !== undefined) {
-      await sheetsUpdate(`'${meta.sheet}'!B${rowNumber}`, [[update.actual]]);
-    } else if (update.maxStock !== undefined) {
-      await sheetsUpdate(`'${meta.sheet}'!C${rowNumber}`, [[update.maxStock]]);
+    lastIndex = i;
+    if (!rowByName.has(name)) rowByName.set(name, i + 1);
+  }
+  for (const [name, update] of byName) {
+    const rowNumber = rowByName.get(name);
+    if (!rowNumber) continue;
+    const current = farm.equipment.find((item) => item.name === name);
+    const actual = update.actual ?? current?.actual;
+    const maxStock = update.maxStock ?? current?.maxStock;
+    if (update.actual !== undefined) {
+      await sheetsUpdate(`'${meta.sheet}'!${columnA1(layout.actualCol)}${rowNumber}`, [[update.actual]]);
+    }
+    if (update.maxStock !== undefined) {
+      await sheetsUpdate(`'${meta.sheet}'!${columnA1(layout.maxCol)}${rowNumber}`, [[update.maxStock]]);
+    }
+    if (actual !== undefined && maxStock !== undefined && actual > maxStock) {
+      await sheetsUpdate(`'${meta.sheet}'!${columnA1(layout.completeCol)}${rowNumber}`, [[0]]);
     }
   }
-  const added: (string | number)[][] = [];
+  let nextRow = lastIndex + 2;
   for (const item of updates) {
     const found = farm.equipment.find((row) => row.id === item.id);
     const name = (item.name || found?.name || "").trim();
-    if (!name || existingNames.has(name)) continue;
+    if (!name || rowByName.has(name)) continue;
     if (!item.isNew && found) continue;
-    existingNames.add(name);
-    added.push([name, item.actual ?? 0, item.maxStock ?? item.actual ?? 0]);
-  }
-  if (added.length) {
-    const start = meta.startRow + lastNamed + 1;
-    await sheetsUpdate(`'${meta.sheet}'!A${start}:C${start + added.length - 1}`, added);
+    rowByName.set(name, nextRow);
+    const actual = item.actual ?? 0;
+    const maxStock = item.maxStock ?? actual;
+    await sheetsUpdate(`'${meta.sheet}'!${columnA1(layout.nameCol)}${nextRow}`, [[name]]);
+    await sheetsUpdate(`'${meta.sheet}'!${columnA1(layout.actualCol)}${nextRow}`, [[actual]]);
+    await sheetsUpdate(`'${meta.sheet}'!${columnA1(layout.maxCol)}${nextRow}`, [[maxStock]]);
+    await sheetsUpdate(`'${meta.sheet}'!${columnA1(layout.completeCol)}${nextRow}`, [[toBringQty(actual, maxStock)]]);
+    nextRow += 1;
   }
   await sheetsUpdate(`'${meta.sheet}'!C1`, [[todayIso()]]);
   try {

@@ -182,9 +182,17 @@ export function parseCompleteCell(value: string | undefined): number | null {
   ) {
     return null;
   }
-  const n = Number(v.replace(",", "").replace("−", "-"));
+  const n = Number(v.replace(",", "").replace(/[−–—]/g, "-"));
   if (!Number.isFinite(n)) return null;
   return Math.max(0, n);
+}
+
+/** כמות להביא מהמחסן. מינוס (עודף מלאי) נרשם כ-0. */
+export function toBringQty(actual: number, maxStock: number, fromSheet?: number | null): number {
+  if (fromSheet != null && Number.isFinite(fromSheet)) {
+    return Math.max(0, fromSheet);
+  }
+  return Math.max(0, maxStock - actual);
 }
 
 export function completeFromRow(row: (string | undefined)[] | undefined, actual: number, maxStock: number) {
@@ -192,11 +200,11 @@ export function completeFromRow(row: (string | undefined)[] | undefined, actual:
   if (fromF !== null) return fromF;
   const fromE = parseCompleteCell(row?.[4]);
   if (fromE !== null) return fromE;
-  return Math.max(0, maxStock - actual);
+  return toBringQty(actual, maxStock);
 }
 
 export function toCompleteOf(item: EquipmentItem): number {
-  return Math.max(0, item.toComplete ?? Math.max(0, item.maxStock - item.actual));
+  return toBringQty(item.actual, item.maxStock, item.toComplete);
 }
 
 export function pendingContainers(farm: Farm): LabeledContainer[] {
