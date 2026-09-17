@@ -35,10 +35,12 @@ export function ReportScreen({
   farmId,
   user,
   onBack,
+  onSaved,
 }: {
   farmId: FarmId;
   user: string;
   onBack: () => void;
+  onSaved: () => void;
 }) {
   const [farm, setFarm] = useState<Farm | null>(null);
   const [demo, setDemo] = useState(true);
@@ -362,6 +364,7 @@ export function ReportScreen({
       );
       const listed = await api<{ reports: ReportRecord[] }>(`/api/reports?farm=${farmId}`);
       setReports(listed.reports);
+      if (items.length || note.trim() || payloadMedia.length) onSaved();
     } catch {
       setError("השמירה נכשלה");
     } finally {
