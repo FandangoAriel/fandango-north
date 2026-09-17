@@ -1,3 +1,5 @@
+import { TARGET_IMAGE_BYTES } from "../shared/sheet-media";
+
 const DB_NAME = "fandango-dirty-media";
 const STORE = "files";
 
@@ -34,22 +36,40 @@ export async function idbGet(id: string) {
   });
 }
 
-export async function compressImage(file: File, maxSize = 1280, quality = 0.72) {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
-  const width = Math.max(1, Math.round(bitmap.width * scale));
-  const height = Math.max(1, Math.round(bitmap.height * scale));
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return file;
-  ctx.drawImage(bitmap, 0, 0, width, height);
-  bitmap.close();
-  const blob = await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob(resolve, "image/jpeg", quality);
-  });
-  return blob ?? file;
+export async function compressImage(file: File) {
+  async function render(source: ImageBitmap | File, maxSize: number, quality: number) {
+    const bitmap = source instanceof ImageBitmap ? source : await createImageBitmap(source);
+    const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      if (!(source instanceof ImageBitmap)) bitmap.close();
+      return file;
+    }
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    if (!(source instanceof ImageBitmap)) bitmap.close();
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob(resolve, "image/jpeg", quality);
+    });
+    return blob ?? file;
+  }
+
+  const original = await createImageBitmap(file).catch(() => undefined);
+  if (!original) return file;
+  let maxSize = 960;
+  let quality = 0.62;
+  let blob: Blob = await render(original, maxSize, quality);
+  while (blob.size > TARGET_IMAGE_BYTES && (quality > 0.34 || maxSize > 480)) {
+    if (quality > 0.34) quality = Math.max(0.34, quality - 0.08);
+    else maxSize = Math.round(maxSize * 0.75);
+    blob = await render(original, maxSize, quality);
+  }
+  original.close();
+  return blob;
 }
 
 export async function blobToBase64(blob: Blob) {
