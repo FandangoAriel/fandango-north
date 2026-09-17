@@ -39,7 +39,15 @@ assert.equal(items[0]?.id, "pic-1");
 assert.equal(items[0]?.user, "מיכל");
 assert.equal(items[1]?.kind, "video");
 assert.equal(driveFileId("https://drive.google.com/file/d/abc1234567/view"), "abc1234567");
-assert.equal(mediaPreviewUrl(items[1]!), "https://drive.google.com/file/d/abc1234567/preview");
+assert.equal(mediaPreviewUrl(items[1]!), "/api/media/abc1234567");
 assert.equal(mediaPreviewUrl(items[0]!), "/api/media/pic-1");
+assert.equal(
+  mediaPreviewUrl({
+    id: "x",
+    kind: "image",
+    url: "https://drive.google.com/uc?id=abcdefghij&export=view",
+  }),
+  "/api/media/abcdefghij",
+);
 assert.equal(dirtyMediaFromReports(reports.filter((item) => !item.dirtyMedia)).length, 0);
 console.log("dirty-media tests passed");

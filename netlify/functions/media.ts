@@ -5,7 +5,7 @@ export const handler: Handler = async (event) => {
   try {
     const fromPath = event.path.split("/").filter(Boolean).pop();
     const id = event.queryStringParameters?.id || (fromPath && fromPath !== "media" ? fromPath : "");
-    return handleGetMedia(id ?? null);
+    return await handleGetMedia(id ?? null);
   } catch (error) {
     const message = error instanceof Error ? error.message : "error";
     return json(500, { error: message });

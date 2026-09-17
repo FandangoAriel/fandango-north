@@ -83,6 +83,47 @@ async function sheetsAppend(range: string, values: (string | number)[][]) {
   if (!res.ok) throw new Error(`sheets_append_${res.status}`);
 }
 
+function quoteSheet(title: string) {
+  return `'${title.replace(/'/g, "''")}'`;
+}
+
+export function reportSheetTitle(farmName: string, at = new Date()) {
+  const day = String(at.getDate()).padStart(2, "0");
+  const month = String(at.getMonth() + 1).padStart(2, "0");
+  return `${farmName} ${day}-${month}-${at.getFullYear()}`;
+}
+
+async function listSheetTitles() {
+  const { token, spreadsheetId } = await accessToken();
+  const res = await fetch(`${SHEETS_API}/${spreadsheetId}?fields=sheets.properties.title`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`sheets_meta_${res.status}`);
+  const data = (await res.json()) as { sheets?: { properties?: { title?: string } }[] };
+  return (data.sheets ?? []).map((sheet) => sheet.properties?.title ?? "").filter(Boolean);
+}
+
+async function ensureSheet(title: string) {
+  const titles = await listSheetTitles();
+  if (titles.includes(title)) return;
+  const { token, spreadsheetId } = await accessToken();
+  const res = await fetch(`${SHEETS_API}/${spreadsheetId}:batchUpdate`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      requests: [{ addSheet: { properties: { title, rightToLeft: true } } }],
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    if (res.status === 400 && /already exists/i.test(text)) return;
+    throw new Error(`sheets_add_${res.status}`);
+  }
+}
+
 const REPORTS_HEADER = [
   "תאריך",
   "משתמש",
@@ -128,8 +169,26 @@ async function googleUploadMedia(name: string, mime: string, bytes: Buffer) {
     },
     body: JSON.stringify({ role: "reader", type: "anyone" }),
   }).catch(() => undefined);
-  if (file.id) return `https://drive.google.com/uc?id=${file.id}&export=view`;
+  if (file.id) return `https://drive.google.com/file/d/${file.id}/view`;
   return file.webContentLink || file.webViewLink;
+}
+
+export async function googleGetMediaFile(id: string): Promise<{ mime: string; data: Buffer } | null> {
+  if (!id) return null;
+  const { token } = await accessToken();
+  const metaRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?fields=id,mimeType`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!metaRes.ok) return null;
+  const meta = (await metaRes.json()) as { mimeType?: string };
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?alt=media`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) return null;
+  const data = Buffer.from(await res.arrayBuffer());
+  if (!data.length) return null;
+  return { mime: meta.mimeType || "application/octet-stream", data };
 }
 
 export async function googleSaveDirtyMedia(
@@ -156,6 +215,7 @@ export async function googleSaveDirtyMedia(
 }
 
 async function appendReportsLog(row: (string | number)[]) {
+  await ensureSheet("דיווחים");
   try {
     const existing = await sheetsGet("דיווחים!A1:J1");
     const first = existing.values?.[0]?.[0]?.trim() ?? "";
@@ -163,13 +223,68 @@ async function appendReportsLog(row: (string | number)[]) {
       await sheetsUpdate("דיווחים!A1:J1", [REPORTS_HEADER]);
     }
   } catch {
-    try {
-      await sheetsUpdate("דיווחים!A1:J1", [REPORTS_HEADER]);
-    } catch {
-      // tab may not exist
-    }
+    await sheetsUpdate("דיווחים!A1:J1", [REPORTS_HEADER]);
   }
   await sheetsAppend("דיווחים!A1", [row]);
+}
+
+async function writeDailyReport(
+  farm: Farm,
+  farmId: FarmId,
+  updates: StockUpdate[],
+  user: string,
+  note: string,
+  dirtyMedia: DirtyMedia[],
+  at: Date,
+) {
+  const farmName = FARM_SHEETS[farmId].name;
+  const title = reportSheetTitle(farmName, at);
+  await ensureSheet(title);
+  const quoted = quoteSheet(title);
+  let last = 0;
+  try {
+    const colA = await sheetsGet(`${quoted}!A:A`);
+    last = colA.values?.length ?? 0;
+  } catch {
+    last = 0;
+  }
+  const start = last ? last + 2 : 1;
+  const byId = new Map(updates.map((item) => [item.id, item]));
+  const byName = new Map(updates.map((item) => [(item.name ?? "").trim(), item]));
+  const seen = new Set<string>();
+  const table: (string | number)[][] = [];
+  for (const item of farm.equipment) {
+    const update = byId.get(item.id) ?? byName.get(item.name);
+    seen.add(item.name);
+    table.push([
+      item.name,
+      update?.actual === undefined ? "" : update.actual,
+      update?.maxStock === undefined ? item.maxStock : update.maxStock,
+    ]);
+  }
+  for (const update of updates) {
+    const name = (update.name ?? "").trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    table.push([name, update.actual ?? "", update.maxStock ?? update.actual ?? ""]);
+  }
+  const time = at.toLocaleString("he-IL", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const mediaLinks = dirtyMedia.map((item) => item.url).filter(Boolean).join(" ");
+  const block: (string | number)[][] = [
+    ["דיווח מלאי", farmName, time, user],
+    ["הערה", note],
+    ["ציוד מלוכלך", mediaLinks],
+    ...dirtyMedia.map((item) => [item.kind === "video" ? "סרטון" : "תמונה", item.url]),
+    ["פריט", "מלאי קיים", "מקס"],
+    ...table,
+  ];
+  await sheetsUpdate(`${quoted}!A${start}`, block);
 }
 
 export async function googleListUsers(): Promise<string[]> {
@@ -303,9 +418,15 @@ export async function googleReportStock(
     nextRow += 1;
   }
   await sheetsUpdate(`'${meta.sheet}'!C1`, [[todayIso()]]);
+  const at = new Date();
+  try {
+    await writeDailyReport(farm, farmId, updates, user, note, dirtyMedia, at);
+  } catch {
+    // keep farm write even if the daily tab fails
+  }
   try {
     await appendReportsLog([
-      new Date().toISOString(),
+      at.toISOString(),
       user,
       FARM_SHEETS[farmId].name,
       farmId,

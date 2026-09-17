@@ -12,6 +12,7 @@ import {
   googleConfigured,
   googleGetFarm,
   googleGetLoad,
+  googleGetMediaFile,
   googleListReports,
   googleListUsers,
   googleReportStock,
@@ -19,8 +20,8 @@ import {
   googleSaveLoad,
   googleSaveOrder,
 } from "./google";
-import { dirtyMediaFromReports, type DirtyMedia, type FarmId, type LoadMark, type StockUpdate } from "./types";
-import { MAX_MEDIA_BYTES, readMediaFile, saveMediaFile } from "./media-store";
+import { dirtyMediaFromReports, driveFileId, type DirtyMedia, type FarmId, type LoadMark, type StockUpdate } from "./types";
+import { MAX_MEDIA_BYTES, mediaIdOk, readMediaFile, saveMediaFile } from "./media-store";
 
 const jsonHeaders = {
   "Content-Type": "application/json; charset=utf-8",
@@ -166,11 +167,27 @@ export async function handleReport(payload: {
   return json(200, { farm, demo: true, dirtyMedia });
 }
 
-export function handleGetMedia(idRaw: string | null) {
-  const id = idRaw?.trim() ?? "";
-  const file = readMediaFile(id);
-  if (!file) return json(404, { error: "not_found" });
-  return binary(200, file.data, file.mime);
+export async function handleGetMedia(idRaw: string | null) {
+  const id = decodeURIComponent(idRaw?.trim() ?? "");
+  const local = readMediaFile(id);
+  if (local) return binary(200, local.data, local.mime);
+  const driveId = driveFileId(id) ?? (mediaIdOk(id) ? id : "");
+  if (googleConfigured() && driveId) {
+    try {
+      const file = await googleGetMediaFile(driveId);
+      if (file) {
+        try {
+          saveMediaFile(driveId, file.mime, file.data);
+        } catch {
+          // cache is best-effort
+        }
+        return binary(200, file.data, file.mime);
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return json(404, { error: "not_found" });
 }
 
 export async function handleGetLoad(farmRaw: string | null) {

@@ -71,11 +71,14 @@ export function driveFileId(url: string): string | undefined {
   return match?.[1];
 }
 
-export function mediaPreviewUrl(item: Pick<DirtyMedia, "kind" | "url">): string {
+export function mediaPreviewUrl(item: Pick<DirtyMedia, "kind" | "url" | "id">): string {
+  if (item.url.startsWith("/api/media/")) return item.url;
   const id = driveFileId(item.url);
-  if (!id) return item.url;
-  if (item.kind === "video") return `https://drive.google.com/file/d/${id}/preview`;
-  return `https://lh3.googleusercontent.com/d/${id}`;
+  if (id) return `/api/media/${id}`;
+  if (item.id && /^[a-zA-Z0-9._-]{10,80}$/.test(item.id) && !item.id.includes(":")) {
+    return `/api/media/${item.id}`;
+  }
+  return item.url;
 }
 
 export function dirtyMediaFromReports(reports: ReportRecord[], limit = 8): DirtyMedia[] {
