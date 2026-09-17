@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Camera, Video, X } from "lucide-react";
-import type { LoadMark } from "../shared/types";
+import type { LoadMark, DirtyMedia } from "../shared/types";
+import { mediaPreviewUrl } from "../shared/types";
 
 export function Screen({
   title,
@@ -322,6 +323,57 @@ export function DirtyMediaField({
         </div>
       )}
     </div>
+  );
+}
+
+function formatMediaWhen(iso?: string) {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString("he-IL", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function DirtyMediaGallery({ items }: { items: DirtyMedia[] }) {
+  if (!items.length) return null;
+  return (
+    <section>
+      <h2 className="mb-0.5 text-[11px] font-semibold text-[#3d6b4a]">ציוד מלוכלך מהדיווח</h2>
+      <p className="mb-1 text-[11px] text-black/45">מה שצילם המדווח — כדי שהמעמיס יראה לפני היציאה.</p>
+      <div className="grid gap-2">
+        {items.map((item) => {
+          const src = mediaPreviewUrl(item);
+          const drive = Boolean(item.url.match(/drive\.google\.com|googleusercontent\.com/));
+          const caption = [item.user, formatMediaWhen(item.at)].filter(Boolean).join(" · ");
+          return (
+            <figure key={item.id} className="overflow-hidden rounded-lg bg-white">
+              {item.kind === "video" && drive ? (
+                <iframe
+                  title={item.name}
+                  src={src}
+                  className="h-48 w-full bg-black"
+                  allow="autoplay; encrypted-media"
+                  allowFullScreen
+                />
+              ) : item.kind === "video" ? (
+                <video src={src} controls className="max-h-48 w-full bg-black" />
+              ) : (
+                <a href={item.url} target="_blank" rel="noreferrer">
+                  <img src={src} alt={item.name} className="max-h-48 w-full object-cover" />
+                </a>
+              )}
+              {caption ? (
+                <figcaption className="px-2 py-1 text-[11px] text-black/55">{caption}</figcaption>
+              ) : null}
+            </figure>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

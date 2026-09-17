@@ -62,6 +62,41 @@ export interface DirtyMedia {
   name: string;
   mime: string;
   url: string;
+  at?: string;
+  user?: string;
+}
+
+export function driveFileId(url: string): string | undefined {
+  const match = url.match(/\/d\/([-\w]{10,})/) ?? url.match(/[?&]id=([-\w]{10,})/);
+  return match?.[1];
+}
+
+export function mediaPreviewUrl(item: Pick<DirtyMedia, "kind" | "url">): string {
+  const id = driveFileId(item.url);
+  if (!id) return item.url;
+  if (item.kind === "video") return `https://drive.google.com/file/d/${id}/preview`;
+  return `https://lh3.googleusercontent.com/d/${id}`;
+}
+
+export function dirtyMediaFromReports(reports: ReportRecord[], limit = 8): DirtyMedia[] {
+  const seen = new Set<string>();
+  const items: DirtyMedia[] = [];
+  for (const report of reports) {
+    if (report.kind === "load") continue;
+    for (const item of report.dirtyMedia ?? []) {
+      const url = item.url?.trim();
+      if (!url || seen.has(item.id)) continue;
+      seen.add(item.id);
+      items.push({
+        ...item,
+        url,
+        at: report.at,
+        user: report.user,
+      });
+      if (items.length >= limit) return items;
+    }
+  }
+  return items;
 }
 
 export function isNewEquipmentId(id: string) {
