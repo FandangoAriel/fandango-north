@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { detectSheetLayout, parseFarmSheet, columnA1 } from "./sheet-layout";
+import { detectSheetLayout, parseFarmSheet, columnA1, lastEquipmentRowIndex, nextEquipmentSerial, newEquipmentRowValues } from "./sheet-layout";
 import { toBringQty } from "./types";
 
 const beitHaemek: string[][] = [
@@ -41,6 +41,10 @@ const namedMax: string[][] = [
   assert.equal(parsed.containers[0]?.containerType, "601 - לשנות השילוט");
   assert.ok(!parsed.containers.some((item) => /false/i.test(`${item.customerName} ${item.containerType}`)));
   assert.equal(parsed.layout.maxCol, 3);
+  assert.equal(parsed.layout.serialCol, 0);
+  assert.equal(parsed.layout.supplyNameCol, 4);
+  assert.equal(parsed.layout.completeCol, 5);
+  assert.equal(parsed.layout.flagCol, 6);
 }
 
 {
@@ -50,6 +54,8 @@ const namedMax: string[][] = [
   assert.equal(parsed.equipment[0]?.maxStock, 32);
   assert.equal(parsed.containers.length, 0);
   assert.equal(parsed.layout.maxCol, 2);
+  assert.equal(parsed.layout.serialCol, -1);
+  assert.equal(parsed.layout.flagCol, -1);
 }
 
 {
@@ -68,5 +74,24 @@ assert.equal(toBringQty(21, 20, -1), 0);
 assert.equal(toBringQty(23, 40, 17), 17);
 assert.equal(columnA1(0), "A");
 assert.equal(columnA1(5), "F");
+
+{
+  const parsed = parseFarmSheet("beit-haemek", beitHaemek);
+  const last = lastEquipmentRowIndex(beitHaemek, parsed.layout, "בית העמק");
+  assert.equal(last, 6);
+  assert.equal(nextEquipmentSerial(beitHaemek, parsed.layout), 5);
+  const row = newEquipmentRowValues(
+    parsed.layout,
+    { name: "פריט חדש", actual: 2, maxStock: 8, serial: 5 },
+    beitHaemek[last],
+  );
+  assert.deepEqual(row, [5, "פריט חדש", 2, 8, "פריט חדש", 6, "FALSE"]);
+}
+
+{
+  const parsed = parseFarmSheet("kfar-hasidim", kfarHasidim);
+  const row = newEquipmentRowValues(parsed.layout, { name: "פריט חדש", actual: 2, maxStock: 8 });
+  assert.deepEqual(row, ["פריט חדש", 2, 8, 6]);
+}
 
 console.log("sheet-layout tests passed");

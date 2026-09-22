@@ -9,6 +9,12 @@ export interface DetectedLayout {
   actualCol: number;
   maxCol: number;
   completeCol: number;
+  /** Column with 1, 2, 3… before the name. -1 when the farm has no serials. */
+  serialCol: number;
+  /** "ציוד לספק" name copy. -1 when missing. */
+  supplyNameCol: number;
+  /** TRUE/FALSE checkbox after the qty-to-bring. -1 when missing. */
+  flagCol: number;
   container: { customerId: number; customerName: number; type: number; supplied: number };
 }
 
@@ -170,16 +176,71 @@ function detectSuppliedColumn(
   return fallback;
 }
 
+function detectSerialCol(rows: SheetRow[], headerRow: number, nameCol: number): number {
+  if (nameCol <= 0) return -1;
+  const serialCol = nameCol - 1;
+  const start = headerRow + 1;
+  const end = Math.min(rows.length, start + 10);
+  let serials = 0;
+  for (let i = start; i < end; i += 1) {
+    if (isSerialCell(cell(rows[i], serialCol))) serials += 1;
+  }
+  return serials >= 1 ? serialCol : -1;
+}
+
+function detectSupplyNameCol(
+  header: SheetRow | undefined,
+  rows: SheetRow[],
+  headerRow: number,
+  nameCol: number,
+  completeCol: number,
+): number {
+  const fromHeader = headerIndex(
+    header,
+    (normalized, raw) => raw.startsWith("ציוד לספק") || normalized.startsWith("ציוד לספק"),
+  );
+  if (fromHeader >= 0) return fromHeader;
+  const guess = completeCol - 1;
+  if (guess <= nameCol) return -1;
+  const firstData = rows[headerRow + 1] ?? [];
+  const name = cell(firstData, nameCol);
+  if (name && cell(firstData, guess) === name && isEquipmentName(name)) return guess;
+  return -1;
+}
+
+function detectFlagCol(rows: SheetRow[], headerRow: number, completeCol: number): number {
+  const col = completeCol + 1;
+  const start = headerRow + 1;
+  const end = Math.min(rows.length, start + 10);
+  for (let i = start; i < end; i += 1) {
+    if (isBooleanCell(cell(rows[i], col))) return col;
+  }
+  return -1;
+}
+
+function withRowShape(
+  rows: SheetRow[],
+  headerRow: number,
+  layout: Omit<DetectedLayout, "serialCol" | "supplyNameCol" | "flagCol">,
+): DetectedLayout {
+  return {
+    ...layout,
+    serialCol: detectSerialCol(rows, headerRow, layout.nameCol),
+    supplyNameCol: detectSupplyNameCol(rows[headerRow], rows, headerRow, layout.nameCol, layout.completeCol),
+    flagCol: detectFlagCol(rows, headerRow, layout.completeCol),
+  };
+}
+
 export function detectSheetLayout(farmId: FarmId, rows: SheetRow[]): DetectedLayout {
   const meta = FARM_SHEETS[farmId];
-  const fallback: DetectedLayout = {
+  const fallback = withRowShape(rows, Math.max(0, meta.startRow - 2), {
     headerRow: Math.max(0, meta.startRow - 2),
     nameCol: meta.equipment.name,
     actualCol: meta.equipment.actual,
     maxCol: meta.equipment.maxStock,
     completeCol: meta.equipment.complete,
     container: { ...meta.container },
-  };
+  });
 
   const headerRow = findHeaderRow(rows);
   if (headerRow < 0) return fallback;
@@ -224,15 +285,16 @@ export function detectSheetLayout(farmId: FarmId, rows: SheetRow[]): DetectedLay
   const typeRaw = headerIndex(header, (normalized) => normalized === "סוג מיכל" || normalized.includes("סוג מיכל"));
   const type = typeRaw >= 0 ? typeRaw : fallback.container.type;
   const supplied = detectSuppliedColumn(rows, headerRow, type, fallback.container.supplied);
+  const completeCol = findCompleteColumn(header, fallback.completeCol);
 
-  return {
+  return withRowShape(rows, headerRow, {
     headerRow,
     nameCol,
     actualCol,
     maxCol,
-    completeCol: findCompleteColumn(header, fallback.completeCol),
+    completeCol,
     container: { customerId, customerName, type, supplied },
-  };
+  });
 }
 
 function parseSheetNumber(value: string | undefined): number {
@@ -264,6 +326,65 @@ function findUpdatedAt(rows: SheetRow[]): string {
     }
   }
   return todayIso();
+}
+
+export function lastEquipmentRowIndex(rows: SheetRow[], layout: DetectedLayout, farmName?: string): number {
+  let last = layout.headerRow;
+  for (let i = layout.headerRow + 1; i < rows.length; i += 1) {
+    if (isEquipmentName(cell(rows[i], layout.nameCol), farmName)) last = i;
+  }
+  return last;
+}
+
+export function nextEquipmentSerial(rows: SheetRow[], layout: DetectedLayout): number {
+  if (layout.serialCol < 0) return 0;
+  let max = 0;
+  for (let i = layout.headerRow + 1; i < rows.length; i += 1) {
+    const value = cell(rows[i], layout.serialCol);
+    if (isSerialCell(value)) max = Math.max(max, Number(value));
+  }
+  return max + 1;
+}
+
+export function equipmentRowWidth(layout: DetectedLayout): number {
+  return Math.max(layout.nameCol, layout.actualCol, layout.maxCol, layout.completeCol, layout.serialCol, layout.supplyNameCol, layout.flagCol, 0) + 1;
+}
+
+export function newEquipmentRowValues(
+  layout: DetectedLayout,
+  item: { name: string; actual: number; maxStock: number; serial?: number },
+  template?: SheetRow,
+): (string | number)[] {
+  const width = equipmentRowWidth(layout);
+  const row: (string | number)[] = Array.from({ length: width }, () => "");
+  const complete = toBringQty(item.actual, item.maxStock);
+  const templateName = template ? cell(template, layout.nameCol) : "";
+
+  if (layout.serialCol >= 0 && item.serial != null && item.serial > 0) {
+    row[layout.serialCol] = item.serial;
+  }
+  row[layout.nameCol] = item.name;
+  row[layout.actualCol] = item.actual;
+  row[layout.maxCol] = item.maxStock;
+  row[layout.completeCol] = complete;
+  if (layout.supplyNameCol >= 0) row[layout.supplyNameCol] = item.name;
+  if (layout.flagCol >= 0) row[layout.flagCol] = "FALSE";
+
+  if (template && templateName) {
+    for (let col = 0; col < width; col += 1) {
+      if (
+        col === layout.actualCol ||
+        col === layout.maxCol ||
+        col === layout.completeCol ||
+        col === layout.serialCol ||
+        col === layout.flagCol
+      ) {
+        continue;
+      }
+      if (cell(template, col) === templateName) row[col] = item.name;
+    }
+  }
+  return row;
 }
 
 export function parseFarmSheet(farmId: FarmId, rows: SheetRow[]): ParsedFarmSheet {

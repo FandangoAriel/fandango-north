@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { mediaApiUrl } from "./sheet-media";
 import { dirtyMediaFromReports, driveFileId, mediaPreviewUrl, type ReportRecord } from "./types";
 
 const reports: ReportRecord[] = [
@@ -40,6 +41,7 @@ assert.equal(items[0]?.user, "מיכל");
 assert.equal(items[1]?.kind, "video");
 assert.equal(driveFileId("https://drive.google.com/file/d/abc1234567/view"), "abc1234567");
 assert.equal(mediaPreviewUrl(items[1]!), "/api/media/abc1234567");
+assert.equal(mediaPreviewUrl(items[0]!), mediaApiUrl("pic-1"));
 assert.equal(mediaPreviewUrl(items[0]!), "/api/media/pic-1");
 assert.equal(
   mediaPreviewUrl({

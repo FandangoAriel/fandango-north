@@ -11,8 +11,17 @@ import type {
   StockUpdate,
   DirtyMedia,
 } from "./types";
-import { FARM_SHEETS, applyItemOrder, farmLoadItems, todayIso, toBringQty } from "./types";
-import { columnA1, parseFarmSheet } from "./sheet-layout";
+import { FARM_SHEETS, applyItemOrder, driveFileId, farmLoadItems, todayIso } from "./types";
+import {
+  columnA1,
+  lastEquipmentRowIndex,
+  newEquipmentRowValues,
+  nextEquipmentSerial,
+  parseFarmSheet,
+  type DetectedLayout,
+  type SheetRow,
+} from "./sheet-layout";
+import { canStoreMediaInSheet, mediaApiUrl } from "./sheet-media";
 
 const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
 
@@ -55,9 +64,13 @@ async function sheetsGet(range: string) {
   return (await res.json()) as { values?: string[][] };
 }
 
-async function sheetsUpdate(range: string, values: (string | number)[][]) {
+async function sheetsUpdate(
+  range: string,
+  values: (string | number)[][],
+  valueInputOption: "USER_ENTERED" | "RAW" = "USER_ENTERED",
+) {
   const { token, spreadsheetId } = await accessToken();
-  const url = `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=USER_ENTERED`;
+  const url = `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueInputOption=${valueInputOption}`;
   const res = await fetch(url, {
     method: "PUT",
     headers: {
@@ -69,9 +82,13 @@ async function sheetsUpdate(range: string, values: (string | number)[][]) {
   if (!res.ok) throw new Error(`sheets_update_${res.status}`);
 }
 
-async function sheetsAppend(range: string, values: (string | number)[][]) {
+async function sheetsAppend(
+  range: string,
+  values: (string | number)[][],
+  valueInputOption: "USER_ENTERED" | "RAW" = "USER_ENTERED",
+) {
   const { token, spreadsheetId } = await accessToken();
-  const url = `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+  const url = `${SHEETS_API}/${spreadsheetId}/values/${encodeURIComponent(range)}:append?valueInputOption=${valueInputOption}&insertDataOption=INSERT_ROWS`;
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -81,6 +98,20 @@ async function sheetsAppend(range: string, values: (string | number)[][]) {
     body: JSON.stringify({ values }),
   });
   if (!res.ok) throw new Error(`sheets_append_${res.status}`);
+}
+
+async function sheetsBatchUpdate(requests: unknown[]) {
+  if (!requests.length) return;
+  const { token, spreadsheetId } = await accessToken();
+  const res = await fetch(`${SHEETS_API}/${spreadsheetId}:batchUpdate`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ requests }),
+  });
+  if (!res.ok) throw new Error(`sheets_batch_${res.status}`);
 }
 
 function quoteSheet(title: string) {
@@ -93,14 +124,28 @@ export function reportSheetTitle(farmName: string, at = new Date()) {
   return `${farmName} ${day}-${month}-${at.getFullYear()}`;
 }
 
-async function listSheetTitles() {
+async function listSheets() {
   const { token, spreadsheetId } = await accessToken();
-  const res = await fetch(`${SHEETS_API}/${spreadsheetId}?fields=sheets.properties.title`, {
+  const res = await fetch(`${SHEETS_API}/${spreadsheetId}?fields=sheets.properties(sheetId,title)`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`sheets_meta_${res.status}`);
-  const data = (await res.json()) as { sheets?: { properties?: { title?: string } }[] };
-  return (data.sheets ?? []).map((sheet) => sheet.properties?.title ?? "").filter(Boolean);
+  const data = (await res.json()) as { sheets?: { properties?: { sheetId?: number; title?: string } }[] };
+  return (data.sheets ?? [])
+    .map((sheet) => ({
+      sheetId: sheet.properties?.sheetId ?? -1,
+      title: sheet.properties?.title ?? "",
+    }))
+    .filter((sheet) => sheet.title && sheet.sheetId >= 0);
+}
+
+async function listSheetTitles() {
+  return (await listSheets()).map((sheet) => sheet.title);
+}
+
+async function sheetIdByTitle(title: string) {
+  const sheets = await listSheets();
+  return sheets.find((sheet) => sheet.title === title)?.sheetId;
 }
 
 async function ensureSheet(title: string) {
@@ -173,22 +218,91 @@ async function googleUploadMedia(name: string, mime: string, bytes: Buffer) {
   return file.webContentLink || file.webViewLink;
 }
 
+const MEDIA_SHEET = "מדיה";
+const MEDIA_HEADER = ["מזהה", "סוג", "שם", "MIME", "תאריך", "Drive", "נתונים"];
+
+async function ensureMediaSheet() {
+  await ensureSheet(MEDIA_SHEET);
+  try {
+    const existing = await sheetsGet(`${MEDIA_SHEET}!A1:G1`);
+    const first = existing.values?.[0]?.[0]?.trim() ?? "";
+    if (!first) await sheetsUpdate(`${MEDIA_SHEET}!A1:G1`, [MEDIA_HEADER]);
+  } catch {
+    await sheetsUpdate(`${MEDIA_SHEET}!A1:G1`, [MEDIA_HEADER]);
+  }
+}
+
+type SheetMediaRow = {
+  id: string;
+  kind: "image" | "video";
+  name: string;
+  mime: string;
+  driveUrl?: string;
+  data?: string;
+};
+
+async function writeSheetMedia(item: SheetMediaRow) {
+  await ensureMediaSheet();
+  const data = canStoreMediaInSheet(item.data) ? item.data : "";
+  let rows: string[][] = [];
+  try {
+    rows = (await sheetsGet(`${MEDIA_SHEET}!A2:G500`)).values ?? [];
+  } catch {
+    rows = [];
+  }
+  const index = rows.findIndex((row) => row[0] === item.id);
+  const payload: (string | number)[] = [
+    item.id,
+    item.kind,
+    item.name,
+    item.mime,
+    new Date().toISOString(),
+    item.driveUrl ?? "",
+    data,
+  ];
+  if (index >= 0) {
+    await sheetsUpdate(`${MEDIA_SHEET}!A${index + 2}:G${index + 2}`, [payload], "RAW");
+  } else {
+    await sheetsAppend(`${MEDIA_SHEET}!A1`, [payload], "RAW");
+  }
+}
+
+async function readSheetMedia(id: string): Promise<{ mime: string; data: Buffer; driveUrl?: string } | null> {
+  if (!id) return null;
+  try {
+    const rows = (await sheetsGet(`${MEDIA_SHEET}!A2:G500`)).values ?? [];
+    const row = rows.find((item) => item[0] === id);
+    if (!row) return null;
+    const mime = row[3] || "application/octet-stream";
+    const driveUrl = row[5]?.trim() || undefined;
+    const data = row[6]?.trim();
+    if (data) return { mime, data: Buffer.from(data, "base64"), driveUrl };
+    return { mime, data: Buffer.alloc(0), driveUrl };
+  } catch {
+    return null;
+  }
+}
+
 export async function googleGetMediaFile(id: string): Promise<{ mime: string; data: Buffer } | null> {
   if (!id) return null;
+  const fromSheet = await readSheetMedia(id);
+  if (fromSheet?.data.length) return { mime: fromSheet.mime, data: fromSheet.data };
+  const driveId = fromSheet?.driveUrl ? driveFileId(fromSheet.driveUrl) : undefined;
+  const fileId = driveId || id;
   const { token } = await accessToken();
   const metaRes = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?fields=id,mimeType`,
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,mimeType`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!metaRes.ok) return null;
   const meta = (await metaRes.json()) as { mimeType?: string };
-  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?alt=media`, {
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return null;
   const data = Buffer.from(await res.arrayBuffer());
   if (!data.length) return null;
-  return { mime: meta.mimeType || "application/octet-stream", data };
+  return { mime: meta.mimeType || fromSheet?.mime || "application/octet-stream", data };
 }
 
 export async function googleSaveDirtyMedia(
@@ -202,14 +316,58 @@ export async function googleSaveDirtyMedia(
     }
     if (!item.data) continue;
     const bytes = Buffer.from(item.data, "base64");
-    let url: string | undefined;
-    try {
-      url = await googleUploadMedia(item.name || `${item.kind}-${item.id}`, item.mime, bytes);
-    } catch {
-      url = undefined;
+    const fitsSheet = canStoreMediaInSheet(item.data);
+    let driveUrl: string | undefined;
+    if (!fitsSheet) {
+      try {
+        driveUrl = await googleUploadMedia(item.name || `${item.kind}-${item.id}`, item.mime, bytes);
+      } catch {
+        driveUrl = undefined;
+      }
     }
-    if (!url) continue;
-    saved.push({ id: item.id, kind: item.kind, name: item.name, mime: item.mime, url });
+    const payload = {
+      id: item.id,
+      kind: item.kind,
+      name: item.name,
+      mime: item.mime,
+      driveUrl,
+      data: item.data,
+    };
+    let stored = false;
+    try {
+      await writeSheetMedia(payload);
+      stored = true;
+    } catch {
+      if (!driveUrl) {
+        try {
+          driveUrl = await googleUploadMedia(item.name || `${item.kind}-${item.id}`, item.mime, bytes);
+        } catch {
+          driveUrl = undefined;
+        }
+      }
+      if (driveUrl) {
+        try {
+          await writeSheetMedia({ ...payload, driveUrl, data: fitsSheet ? item.data : undefined });
+          stored = true;
+        } catch {
+          stored = false;
+        }
+      }
+    }
+    saved.push({
+      id: item.id,
+      kind: item.kind,
+      name: item.name,
+      mime: item.mime,
+      url: driveUrl && !stored ? driveUrl : mediaApiUrl(item.id),
+    });
+    saved.push({
+      id: item.id,
+      kind: item.kind,
+      name: item.name,
+      mime: item.mime,
+      url: mediaApiUrl(item.id),
+    });
   }
   return saved;
 }
@@ -360,6 +518,40 @@ export async function googleGetFarm(farmId: FarmId): Promise<Farm> {
   };
 }
 
+async function appendEquipmentRow(
+  sheetTitle: string,
+  layout: DetectedLayout,
+  lastIndex: number,
+  item: { name: string; actual: number; maxStock: number; serial?: number; template?: SheetRow },
+) {
+  const values = newEquipmentRowValues(layout, item, item.template);
+  const nextRow0 = lastIndex + 1;
+  const nextRow = nextRow0 + 1;
+  const endCol = columnA1(Math.max(0, values.length - 1));
+  try {
+    const sheetId = await sheetIdByTitle(sheetTitle);
+    if (sheetId != null) {
+      await sheetsBatchUpdate([
+        {
+          insertDimension: {
+            range: {
+              sheetId,
+              dimension: "ROWS",
+              startIndex: nextRow0,
+              endIndex: nextRow0 + 1,
+            },
+            inheritFromBefore: true,
+          },
+        },
+      ]);
+    }
+  } catch {
+    // write values even if insert/format copy is blocked
+  }
+  await sheetsUpdate(`'${sheetTitle}'!A${nextRow}:${endCol}${nextRow}`, [values]);
+  return nextRow;
+}
+
 export async function googleReportStock(
   farmId: FarmId,
   updates: StockUpdate[],
@@ -379,11 +571,9 @@ export async function googleReportStock(
     if (name) byName.set(name, item);
   }
   const rowByName = new Map<string, number>();
-  let lastIndex = layout.headerRow;
   for (let i = layout.headerRow + 1; i < rows.length; i += 1) {
     const name = String(rows[i]?.[layout.nameCol] ?? "").trim();
     if (!name) continue;
-    lastIndex = i;
     if (!rowByName.has(name)) rowByName.set(name, i + 1);
   }
   for (const [name, update] of byName) {
@@ -402,20 +592,26 @@ export async function googleReportStock(
       await sheetsUpdate(`'${meta.sheet}'!${columnA1(layout.completeCol)}${rowNumber}`, [[0]]);
     }
   }
-  let nextRow = lastIndex + 2;
+  let nextSerial = nextEquipmentSerial(rows, layout);
+  let lastIndex = lastEquipmentRowIndex(rows, layout, meta.name);
   for (const item of updates) {
     const found = farm.equipment.find((row) => row.id === item.id);
     const name = (item.name || found?.name || "").trim();
     if (!name || rowByName.has(name)) continue;
     if (!item.isNew && found) continue;
-    rowByName.set(name, nextRow);
     const actual = item.actual ?? 0;
     const maxStock = item.maxStock ?? actual;
-    await sheetsUpdate(`'${meta.sheet}'!${columnA1(layout.nameCol)}${nextRow}`, [[name]]);
-    await sheetsUpdate(`'${meta.sheet}'!${columnA1(layout.actualCol)}${nextRow}`, [[actual]]);
-    await sheetsUpdate(`'${meta.sheet}'!${columnA1(layout.maxCol)}${nextRow}`, [[maxStock]]);
-    await sheetsUpdate(`'${meta.sheet}'!${columnA1(layout.completeCol)}${nextRow}`, [[toBringQty(actual, maxStock)]]);
-    nextRow += 1;
+    const serial = layout.serialCol >= 0 ? nextSerial : undefined;
+    const rowNumber = await appendEquipmentRow(meta.sheet, layout, lastIndex, {
+      name,
+      actual,
+      maxStock,
+      serial,
+      template: rows[lastIndex],
+    });
+    rowByName.set(name, rowNumber);
+    lastIndex = rowNumber - 1;
+    if (serial) nextSerial += 1;
   }
   await sheetsUpdate(`'${meta.sheet}'!C1`, [[todayIso()]]);
   const at = new Date();

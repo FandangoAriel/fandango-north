@@ -75,16 +75,16 @@ async function persistDirtyMedia(items: DirtyMediaInput[]): Promise<DirtyMedia[]
       if (!data.length || data.length > MAX_MEDIA_BYTES) continue;
       try {
         saveMediaFile(item.id, item.mime, data);
-        local.push({
-          id: item.id,
-          kind: item.kind,
-          name: item.name,
-          mime: item.mime,
-          url: `/api/media/${item.id}`,
-        });
       } catch {
-        // skip broken files
+        // ephemeral disk is best-effort
       }
+      local.push({
+        id: item.id,
+        kind: item.kind,
+        name: item.name,
+        mime: item.mime,
+        url: `/api/media/${item.id}`,
+      });
     } else if (item.url) {
       local.push({
         id: item.id,
@@ -101,11 +101,13 @@ async function persistDirtyMedia(items: DirtyMediaInput[]): Promise<DirtyMedia[]
       const uploaded = await googleSaveDirtyMedia(prepared);
       if (uploaded.length) {
         const byId = new Map(local.map((item) => [item.id, item]));
-        for (const item of uploaded) byId.set(item.id, item);
+        for (const item of uploaded) {
+          byId.set(item.id, { ...item, url: item.url || `/api/media/${item.id}` });
+        }
         return [...byId.values()];
       }
     } catch {
-      // keep local urls
+      // keep local urls; sheet-backed fetch still works after deploy if save succeeded
     }
   }
   return local;
