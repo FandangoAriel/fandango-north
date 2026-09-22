@@ -50,7 +50,16 @@ export function App() {
     );
   }
   if (step === "report") {
-    return <ReportScreen farmId={farmId} user={user} onBack={() => setStep("menu")} />;
+    return (
+      <ReportScreen
+        farmId={farmId}
+        user={user}
+        onBack={() => setStep("menu")}
+        onSaved={() => setStep("farm")}
+      />
+    );
   }
-  return <LoadScreen farmId={farmId} user={user} onBack={() => setStep("menu")} />;
+  return (
+    <LoadScreen farmId={farmId} user={user} onBack={() => setStep("menu")} onSaved={() => setStep("farm")} />
+  );
 }
