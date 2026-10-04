@@ -69,7 +69,14 @@ function apiPlugin(): Plugin {
             return;
           }
           if (url.pathname.startsWith("/api/media/")) {
-            send(res, await handleGetMedia(url.pathname.slice("/api/media/".length)));
+            const range = req.headers.range;
+            send(
+              res,
+              await handleGetMedia(
+                decodeURIComponent(url.pathname.slice("/api/media/".length)),
+                Array.isArray(range) ? range[0] : range,
+              ),
+            );
             return;
           }
           if (url.pathname === "/api/load" && req.method === "GET") {

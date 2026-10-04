@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { Camera, Video, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Camera, Image as ImageIcon, Video, X } from "lucide-react";
 import type { LoadMark, DirtyMedia } from "../shared/types";
 import { mediaPreviewUrl } from "../shared/types";
 
@@ -200,6 +201,23 @@ export function ConfirmBar({
   );
 }
 
+export function SaveWarning({
+  text,
+  onCancel,
+  onConfirm,
+}: {
+  text: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return createPortal(
+    <div className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-md bg-[#f4efe4] px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-8px_20px_rgba(0,0,0,0.08)]">
+      <ConfirmBar text={text} onCancel={onCancel} onConfirm={onConfirm} />
+    </div>,
+    document.body,
+  );
+}
+
 export function WhatsAppButton({ href, disabled }: { href: string; disabled?: boolean }) {
   return (
     <a
@@ -250,6 +268,38 @@ export function NoteField({
   );
 }
 
+function FilePick({
+  label,
+  accept,
+  capture,
+  icon,
+  onFiles,
+}: {
+  label: string;
+  accept: string;
+  capture?: boolean;
+  icon: ReactNode;
+  onFiles: (files: FileList | null) => void;
+}) {
+  return (
+    <label className="inline-flex min-h-9 cursor-pointer items-center justify-center gap-1 rounded-lg border border-[#3d6b4a] bg-white px-2 text-[12px] font-medium text-[#3d6b4a]">
+      {icon}
+      {label}
+      <input
+        type="file"
+        accept={accept}
+        capture={capture ? "environment" : undefined}
+        multiple={!capture}
+        className="sr-only"
+        onChange={(event) => {
+          onFiles(event.target.files);
+          event.target.value = "";
+        }}
+      />
+    </label>
+  );
+}
+
 export type DirtyMediaDraft = {
   id: string;
   kind: "image" | "video";
@@ -266,47 +316,27 @@ export function DirtyMediaField({
   onAdd: (files: File[]) => void;
   onRemove: (id: string) => void;
 }) {
-  function pick(kind: "image" | "video", files: FileList | null) {
+  function pick(files: FileList | null) {
     if (!files?.length) return;
     onAdd([...files]);
-    const input = document.getElementById(kind === "image" ? "dirty-photo" : "dirty-video") as HTMLInputElement | null;
-    if (input) input.value = "";
   }
 
   return (
     <div>
       <span className="text-[11px] text-black/50">ציוד מלוכלך</span>
-      <p className="mb-1 text-[11px] text-black/45">צלמו או צרפו תמונה או סרטון אחרי ההערה.</p>
-      <div className="flex flex-wrap gap-2">
-        <label className="inline-flex min-h-8 cursor-pointer items-center gap-1 rounded-lg border border-[#3d6b4a] bg-white px-2.5 text-[12px] font-medium text-[#3d6b4a]">
-          <Camera size={14} strokeWidth={2.2} />
-          תמונה
-          <input
-            id="dirty-photo"
-            type="file"
-            accept="image/*"
-            className="sr-only"
-            onChange={(event) => pick("image", event.target.files)}
-          />
-        </label>
-        <label className="inline-flex min-h-8 cursor-pointer items-center gap-1 rounded-lg border border-[#3d6b4a] bg-white px-2.5 text-[12px] font-medium text-[#3d6b4a]">
-          <Video size={14} strokeWidth={2.2} />
-          סרטון
-          <input
-            id="dirty-video"
-            type="file"
-            accept="video/*"
-            className="sr-only"
-            onChange={(event) => pick("video", event.target.files)}
-          />
-        </label>
+      <p className="mb-1 text-[11px] text-black/45">אפשר לצלם במצלמה או לבחור מהגלריה. סרטון — קצר, של כמה שניות.</p>
+      <div className="grid grid-cols-2 gap-2">
+        <FilePick label="צילום" accept="image/*" capture icon={<Camera size={14} strokeWidth={2.2} />} onFiles={pick} />
+        <FilePick label="תמונה מהגלריה" accept="image/*" icon={<ImageIcon size={14} strokeWidth={2.2} />} onFiles={pick} />
+        <FilePick label="סרטון" accept="video/*" capture icon={<Video size={14} strokeWidth={2.2} />} onFiles={pick} />
+        <FilePick label="סרטון מהגלריה" accept="video/*" icon={<Video size={14} strokeWidth={2.2} />} onFiles={pick} />
       </div>
       {items.length > 0 && (
         <div className="mt-2 grid gap-2">
           {items.map((item) => (
             <div key={item.id} className="relative overflow-hidden rounded-lg bg-white">
               {item.kind === "video" ? (
-                <video src={item.previewUrl} controls className="max-h-48 w-full bg-black" />
+                <video src={item.previewUrl} controls playsInline preload="metadata" className="max-h-48 w-full bg-black" />
               ) : (
                 <img src={item.previewUrl} alt={item.name} className="max-h-48 w-full object-cover" />
               )}
@@ -370,7 +400,14 @@ function DirtyMediaFigure({ item }: { item: DirtyMedia }) {
           פתיחת {item.kind === "video" ? "הסרטון" : "התמונה"}
         </a>
       ) : item.kind === "video" ? (
-        <video src={src} controls className="max-h-48 w-full bg-black" onError={() => setBroken(true)} />
+        <video
+          src={src}
+          controls
+          playsInline
+          preload="metadata"
+          className="max-h-48 w-full bg-black"
+          onError={() => setBroken(true)}
+        />
       ) : (
         <a href={openUrl} target="_blank" rel="noreferrer">
           <img src={src} alt={item.name} className="max-h-48 w-full object-cover" onError={() => setBroken(true)} />

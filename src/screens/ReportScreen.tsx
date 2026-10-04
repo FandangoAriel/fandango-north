@@ -3,8 +3,8 @@ import { useState, type ReactNode } from "react";
 import type { EquipmentItem, Farm, FarmId, ReportRecord, StockUpdate } from "../../shared/types";
 import { isNewEquipmentId } from "../../shared/types";
 import { api } from "../api";
-import { CompactName, CompactQty, ConfirmBar, ChipButton, DirtyMediaField, NoteField, PrimaryButton, Screen } from "../ui";
-import { blobToBase64, compressImage, idbGet, idbPut, kindFromMime, MAX_MEDIA_BYTES } from "../dirtyMedia";
+import { CompactName, CompactQty, ChipButton, DirtyMediaField, NoteField, PrimaryButton, SaveWarning, Screen } from "../ui";
+import { blobToBase64, compressImage, idbGet, idbPut, kindFromMime, MAX_MEDIA_BYTES, MAX_VIDEO_BYTES } from "../dirtyMedia";
 import { SortableList, SortableRow } from "../sortable";
 import { useEnterRefresh } from "../useEnterRefresh";
 
@@ -57,6 +57,7 @@ export function ReportScreen({
   const [focusNew, setFocusNew] = useState<string | null>(null);
   const [reorderMode, setReorderMode] = useState(false);
   const [dirtyMedia, setDirtyMedia] = useState<DirtyDraft[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
 
   function clearDirtyMedia(next: DirtyDraft[] = []) {
     setDirtyMedia((current) => {
@@ -74,8 +75,8 @@ export function ReportScreen({
         setError("אפשר לצרף רק תמונה או סרטון");
         continue;
       }
-      if (file.size > MAX_MEDIA_BYTES && file.type.startsWith("video/")) {
-        setError("הסרטון גדול מדי. הקליטו קצר יותר או צרפו תמונה.");
+      if (file.type.startsWith("video/") && file.size > MAX_VIDEO_BYTES) {
+        setError("הסרטון גדול מדי. הקליטו סרטון קצר יותר או צרפו תמונה.");
         continue;
       }
       const id = crypto.randomUUID();
@@ -180,6 +181,25 @@ export function ReportScreen({
       }
       clearDirtyMedia(next);
     })();
+  }
+
+  async function refreshSheet() {
+    setRefreshing(true);
+    setError("");
+    setMessage("");
+    try {
+      const data = await api<{ farm: Farm; demo: boolean }>(`/api/inventory?farm=${farmId}&fresh=${Date.now()}`);
+      setFarm((previous) => mergeNewItems(data.farm, previous));
+      setDemo(data.demo);
+      setMaxDraft({});
+      setEditingMax(null);
+      const when = data.farm.updatedAt.split("-").reverse().join("/");
+      setMessage(when ? `הגיליון עודכן · ${when}` : "הגיליון עודכן");
+    } catch {
+      setError("הרענון נכשל");
+    } finally {
+      setRefreshing(false);
+    }
   }
 
   function fillFromSheet() {
@@ -312,8 +332,9 @@ export function ReportScreen({
         const file = item.file;
         if (file) {
           const blob: Blob = item.kind === "image" ? await compressImage(file).catch(() => file) : file;
-          if (blob.size > MAX_MEDIA_BYTES) {
-            setError(item.kind === "video" ? "הסרטון גדול מדי. הקליטו קצר יותר או צרפו תמונה." : "התמונה גדולה מדי");
+          const limit = item.kind === "video" ? MAX_VIDEO_BYTES : MAX_MEDIA_BYTES;
+          if (blob.size > limit) {
+            setError(item.kind === "video" ? "הסרטון גדול מדי. הקליטו סרטון קצר יותר או צרפו תמונה." : "התמונה גדולה מדי");
             setSaving(false);
             return;
           }
@@ -362,8 +383,9 @@ export function ReportScreen({
       );
       const listed = await api<{ reports: ReportRecord[] }>(`/api/reports?farm=${farmId}`);
       setReports(listed.reports);
-    } catch {
-      setError("השמירה נכשלה");
+    } catch (error) {
+      const text = error instanceof Error ? error.message : "";
+      setError(text.startsWith("לא ") ? text : "השמירה נכשלה");
     } finally {
       setSaving(false);
     }
@@ -440,7 +462,7 @@ export function ReportScreen({
   return (
     <Screen
       title="דיווח מלאי"
-      subtitle={`${farm?.name ?? ""} · רשמו כמה יש עכשיו`}
+      subtitle={`${farm?.name ?? ""} · רשמו כמה יש עכשיו${farm?.updatedAt ? ` · גיליון ${farm.updatedAt.split("-").reverse().join("/")}` : ""}`}
       onBack={onBack}
       demo={demo}
     >
@@ -456,8 +478,8 @@ export function ReportScreen({
           עריכת דיווח קודם
         </ChipButton>
         <ChipButton onClick={fillFromSheet}>מילוי לפי הגיליון</ChipButton>
-        <ChipButton onClick={() => loadFarm(false).catch(() => setError("הרענון נכשל"))}>
-          רענון מהגיליון
+        <ChipButton onClick={() => void refreshSheet()}>
+          {refreshing ? "מרענן…" : "רענון מהגיליון"}
         </ChipButton>
       </div>
       {reorderMode && (
@@ -562,10 +584,8 @@ export function ReportScreen({
           })
         }
       />
-      {warn && (
-        <ConfirmBar text={warn} onCancel={() => setWarn("")} onConfirm={() => void save()} />
-      )}
-      <div className="sticky bottom-0 bg-[#f4efe4] pt-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
+      {warn && <SaveWarning text={warn} onCancel={() => setWarn("")} onConfirm={() => void save()} />}
+      <div className="sticky bottom-0 z-20 bg-[#f4efe4] pt-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
         <PrimaryButton onClick={() => void save()} disabled={saving || !farm}>
           {saving ? "שומר…" : "שמירה לגיליון"}
         </PrimaryButton>

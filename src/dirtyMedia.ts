@@ -1,9 +1,10 @@
-import { TARGET_IMAGE_BYTES } from "../shared/sheet-media";
+import { SHEET_MEDIA_MAX_CHARS, TARGET_IMAGE_BYTES } from "../shared/sheet-media";
 
 const DB_NAME = "fandango-dirty-media";
 const STORE = "files";
 
 export const MAX_MEDIA_BYTES = 4_000_000;
+export const MAX_VIDEO_BYTES = Math.floor((SHEET_MEDIA_MAX_CHARS * 3) / 4);
 
 function openDb() {
   return new Promise<IDBDatabase>((resolve, reject) => {

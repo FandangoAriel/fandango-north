@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mediaApiUrl } from "./sheet-media";
-import { dirtyMediaFromReports, driveFileId, mediaPreviewUrl, type ReportRecord } from "./types";
+import { dirtyMediaFromReports, driveFileId, mediaPreviewUrl, sheetFillDate, type ReportRecord } from "./types";
 
 const reports: ReportRecord[] = [
   {
@@ -52,4 +52,25 @@ assert.equal(
   "/api/media/abcdefghij",
 );
 assert.equal(dirtyMediaFromReports(reports.filter((item) => !item.dirtyMedia)).length, 0);
+
+const latestOnly = dirtyMediaFromReports([
+  {
+    id: "inv-new",
+    at: "2026-10-03T10:12:00.000Z",
+    user: "אריאל",
+    farmId: "beit-haemek",
+    kind: "inventory",
+    items: [],
+    dirtyMedia: [{ id: "new-pic", kind: "image", name: "חדש", mime: "image/jpeg", url: "/api/media/new-pic" }],
+  },
+  reports[1]!,
+]);
+assert.equal(latestOnly.length, 1);
+assert.equal(latestOnly[0]?.id, "new-pic");
+assert.equal(
+  dirtyMediaFromReports([{ ...reports[1]!, dirtyMedia: [] }, reports[1]!]).length,
+  0,
+);
+assert.equal(sheetFillDate(new Date("2026-10-03T20:30:00.000Z")), "03/10/2026");
+assert.equal(sheetFillDate(new Date("2026-10-03T22:30:00.000Z")), "04/10/2026");
 console.log("dirty-media tests passed");

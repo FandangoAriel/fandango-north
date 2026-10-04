@@ -86,6 +86,16 @@ export function isEquipmentName(value: string | undefined, farmName?: string): b
   return /[\p{L}]/u.test(name);
 }
 
+/** Container type may be a number such as 450 or 600 (column J). */
+export function isContainerTypeLabel(value: string | undefined): boolean {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  if (!text || isBooleanCell(text)) return false;
+  if (HEADER_LABELS.has(text) || HEADER_LABELS.has(normalizeHeader(text))) return false;
+  if (farmNames().has(text)) return false;
+  if (/^\d{2,6}$/.test(text)) return true;
+  return isUsefulLabel(text);
+}
+
 export function isUsefulLabel(value: string | undefined): boolean {
   const text = String(value ?? "").replace(/\s+/g, " ").trim();
   if (!text || isBooleanCell(text) || text.length <= 1) return false;
@@ -136,7 +146,10 @@ function findActualColumn(rows: SheetRow[], headerRow: number): number {
       rows[i],
       (normalized) =>
         normalized === "מלאי קיים" ||
-        (normalized.includes("מלאי") && normalized.includes("קיים")),
+        normalized === "כמות קיימת" ||
+        normalized === "כמות בפועל" ||
+        (normalized.includes("מלאי") && normalized.includes("קיים")) ||
+        (normalized.includes("כמות") && (normalized.includes("קיימת") || normalized.includes("בפועל"))),
     );
     if (index >= 0) return index;
   }
@@ -313,16 +326,23 @@ export function columnA1(index: number): string {
   return s;
 }
 
+function parseSheetDate(value: string | undefined): string | null {
+  const text = String(value ?? "").trim();
+  const match = text.match(/^(\d{1,2})[/.](\d{1,2})[/.](\d{2,4})/);
+  if (!match) return null;
+  const day = match[1].padStart(2, "0");
+  const month = match[2].padStart(2, "0");
+  const year = match[3].length === 2 ? `20${match[3]}` : match[3];
+  return `${year}-${month}-${day}`;
+}
+
 function findUpdatedAt(rows: SheetRow[]): string {
+  const fromD1 = parseSheetDate(rows[0]?.[3]);
+  if (fromD1) return fromD1;
   for (const row of rows.slice(0, 3)) {
     for (const value of row ?? []) {
-      const text = String(value ?? "").trim();
-      const match = text.match(/^(\d{1,2})[/.](\d{1,2})[/.](\d{2,4})$/);
-      if (!match) continue;
-      const day = match[1].padStart(2, "0");
-      const month = match[2].padStart(2, "0");
-      const year = match[3].length === 2 ? `20${match[3]}` : match[3];
-      return `${year}-${month}-${day}`;
+      const parsed = parseSheetDate(value);
+      if (parsed) return parsed;
     }
   }
   return todayIso();
@@ -411,7 +431,7 @@ export function parseFarmSheet(farmId: FarmId, rows: SheetRow[]): ParsedFarmShee
     const customerName = isUsefulLabel(row[layout.container.customerName])
       ? cell(row, layout.container.customerName).replace(/\s+/g, " ")
       : "";
-    const containerType = isUsefulLabel(row[layout.container.type])
+    const containerType = isContainerTypeLabel(row[layout.container.type])
       ? cell(row, layout.container.type).replace(/\s+/g, " ")
       : "";
     const customerIdValue = cell(row, layout.container.customerId);
