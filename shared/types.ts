@@ -81,25 +81,37 @@ export function mediaPreviewUrl(item: Pick<DirtyMedia, "kind" | "url" | "id">): 
   return item.url;
 }
 
+/** Only the latest inventory report. A new report with no photos clears the loader gallery. */
 export function dirtyMediaFromReports(reports: ReportRecord[], limit = 8): DirtyMedia[] {
+  const latest = reports.find((report) => report.kind !== "load");
+  if (!latest) return [];
   const seen = new Set<string>();
   const items: DirtyMedia[] = [];
-  for (const report of reports) {
-    if (report.kind === "load") continue;
-    for (const item of report.dirtyMedia ?? []) {
-      const url = item.url?.trim();
-      if (!url || seen.has(item.id)) continue;
-      seen.add(item.id);
-      items.push({
-        ...item,
-        url,
-        at: report.at,
-        user: report.user,
-      });
-      if (items.length >= limit) return items;
-    }
+  for (const item of latest.dirtyMedia ?? []) {
+    const url = item.url?.trim();
+    if (!url || seen.has(item.id)) continue;
+    seen.add(item.id);
+    items.push({
+      ...item,
+      url,
+      at: item.at || latest.at,
+      user: item.user || latest.user,
+    });
+    if (items.length >= limit) break;
   }
   return items;
+}
+
+/** Fill date for cell D1, in the sheet's day/month/year style, Israel time. */
+export function sheetFillDate(at = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Jerusalem",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).formatToParts(at);
+  const pick = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${pick("day")}/${pick("month")}/${pick("year")}`;
 }
 
 export function isNewEquipmentId(id: string) {

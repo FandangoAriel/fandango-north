@@ -6,10 +6,10 @@ import { api } from "../api";
 import {
   ChipButton,
   CompactQty,
-  ConfirmBar,
   DirtyMediaGallery,
   NoteField,
   PrimaryButton,
+  SaveWarning,
   Screen,
   TriMark,
   WhatsAppButton,
@@ -18,15 +18,15 @@ import { SortableList, SortableRow } from "../sortable";
 import { useEnterRefresh } from "../useEnterRefresh";
 
 function itemTitle(item: LoadItem) {
-  if (item.kind !== "container" || !item.detail || item.detail === item.name) {
-    return item.name;
+  if (item.kind === "container" && item.detail && item.detail !== item.name) {
+    return (
+      <span className="block min-w-0">
+        <span className="block truncate">{item.name}</span>
+        <span className="block truncate text-[12px] font-normal text-black/55">{item.detail}</span>
+      </span>
+    );
   }
-  return (
-    <>
-      {item.name}{" "}
-      <span className="text-[13px] text-black/55">{item.detail}</span>
-    </>
-  );
+  return <span className="block truncate">{item.name}</span>;
 }
 
 function LoadRows({
@@ -65,7 +65,7 @@ function LoadRows({
           key={item.itemId}
           className="flex items-center gap-1.5 border-b border-black/8 px-2 py-0.5 last:border-b-0"
         >
-          <span className="min-w-0 flex-1 truncate text-[13px] leading-tight">{itemTitle(item)}</span>
+          <span className="min-w-0 flex-1 text-[13px] leading-tight">{itemTitle(item)}</span>
           {cluster}
         </div>
       );
@@ -75,7 +75,7 @@ function LoadRows({
         {({ grip }) => (
           <div className="flex items-center gap-1.5 border-b border-black/8 px-2 py-0.5 last:border-b-0">
             {grip}
-            <span className="min-w-0 flex-1 truncate text-[13px] leading-tight">{itemTitle(item)}</span>
+            <span className="min-w-0 flex-1 text-[13px] leading-tight">{itemTitle(item)}</span>
             {cluster}
           </div>
         )}
@@ -279,10 +279,8 @@ export function LoadScreen({
             label="הערה"
             checkbox={{ label: "ע״י המעמיס", checked: byLoader, onChange: setByLoader }}
           />
-          {warn && (
-            <ConfirmBar text={warn} onCancel={() => setWarn("")} onConfirm={() => void save()} />
-          )}
-          <div className="sticky bottom-0 space-y-2 bg-[#f4efe4] pt-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
+          {warn && <SaveWarning text={warn} onCancel={() => setWarn("")} onConfirm={() => void save()} />}
+          <div className="sticky bottom-0 z-20 space-y-2 bg-[#f4efe4] pt-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
             <PrimaryButton onClick={() => void save()} disabled={saving}>
               {saving ? "שומר…" : "שמירת העמסה"}
             </PrimaryButton>

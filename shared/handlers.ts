@@ -22,6 +22,7 @@ import {
 } from "./google";
 import { dirtyMediaFromReports, driveFileId, type DirtyMedia, type FarmId, type LoadMark, type StockUpdate } from "./types";
 import { MAX_MEDIA_BYTES, mediaIdOk, readMediaFile, saveMediaFile } from "./media-store";
+import { parseByteRange } from "./sheet-media";
 
 const jsonHeaders = {
   "Content-Type": "application/json; charset=utf-8",
@@ -36,16 +37,40 @@ export function json(status: number, body: unknown) {
   };
 }
 
-export function binary(status: number, data: Buffer, mime: string) {
+export function binary(status: number, data: Buffer, mime: string, extra: Record<string, string> = {}) {
   return {
     statusCode: status,
     headers: {
       "Content-Type": mime,
       "Cache-Control": "private, max-age=3600",
+      "Accept-Ranges": "bytes",
+      "Content-Length": String(data.length),
+      "Content-Disposition": "inline",
+      ...extra,
     },
     body: data.toString("base64"),
     isBase64Encoded: true,
   };
+}
+
+function mediaResponse(data: Buffer, mime: string, rangeHeader?: string | null) {
+  if (!rangeHeader) return binary(200, data, mime);
+  const range = parseByteRange(data.length, rangeHeader);
+  if (!range) {
+    return {
+      statusCode: 416,
+      headers: {
+        "Content-Type": mime,
+        "Accept-Ranges": "bytes",
+        "Content-Range": `bytes */${data.length}`,
+      },
+      body: "",
+    };
+  }
+  const slice = data.subarray(range.start, range.end + 1);
+  return binary(206, Buffer.from(slice), mime, {
+    "Content-Range": `bytes ${range.start}-${range.end}/${data.length}`,
+  });
 }
 
 type DirtyMediaInput = {
@@ -106,7 +131,9 @@ async function persistDirtyMedia(items: DirtyMediaInput[]): Promise<DirtyMedia[]
         }
         return [...byId.values()];
       }
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (message.startsWith("לא ")) throw error;
       // keep local urls; sheet-backed fetch still works after deploy if save succeeded
     }
   }
@@ -169,10 +196,10 @@ export async function handleReport(payload: {
   return json(200, { farm, demo: true, dirtyMedia });
 }
 
-export async function handleGetMedia(idRaw: string | null) {
+export async function handleGetMedia(idRaw: string | null, rangeHeader?: string | null) {
   const id = decodeURIComponent(idRaw?.trim() ?? "");
   const local = readMediaFile(id);
-  if (local) return binary(200, local.data, local.mime);
+  if (local) return mediaResponse(local.data, local.mime, rangeHeader);
   const driveId = driveFileId(id) ?? (mediaIdOk(id) ? id : "");
   if (googleConfigured() && driveId) {
     try {
@@ -183,7 +210,7 @@ export async function handleGetMedia(idRaw: string | null) {
         } catch {
           // cache is best-effort
         }
-        return binary(200, file.data, file.mime);
+        return mediaResponse(file.data, file.mime, rangeHeader);
       }
     } catch {
       // fall through

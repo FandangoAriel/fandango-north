@@ -11,7 +11,7 @@ import type {
   StockUpdate,
   DirtyMedia,
 } from "./types";
-import { FARM_SHEETS, applyItemOrder, driveFileId, farmLoadItems, todayIso } from "./types";
+import { FARM_SHEETS, applyItemOrder, driveFileId, farmLoadItems, sheetFillDate } from "./types";
 import {
   columnA1,
   lastEquipmentRowIndex,
@@ -21,7 +21,7 @@ import {
   type DetectedLayout,
   type SheetRow,
 } from "./sheet-layout";
-import { canStoreMediaInSheet, mediaApiUrl } from "./sheet-media";
+import { canStoreMediaInSheet, joinSheetMedia, mediaApiUrl, splitSheetMedia } from "./sheet-media";
 
 const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
 
@@ -220,6 +220,7 @@ async function googleUploadMedia(name: string, mime: string, bytes: Buffer) {
 
 const MEDIA_SHEET = "מדיה";
 const MEDIA_HEADER = ["מזהה", "סוג", "שם", "MIME", "תאריך", "Drive", "נתונים"];
+const MEDIA_ROWS = `${MEDIA_SHEET}!A2:DB500`;
 
 async function ensureMediaSheet() {
   await ensureSheet(MEDIA_SHEET);
@@ -243,25 +244,28 @@ type SheetMediaRow = {
 
 async function writeSheetMedia(item: SheetMediaRow) {
   await ensureMediaSheet();
-  const data = canStoreMediaInSheet(item.data) ? item.data : "";
+  const chunks = item.data && canStoreMediaInSheet(item.data) ? splitSheetMedia(item.data) : [];
   let rows: string[][] = [];
   try {
-    rows = (await sheetsGet(`${MEDIA_SHEET}!A2:G500`)).values ?? [];
+    rows = (await sheetsGet(MEDIA_ROWS)).values ?? [];
   } catch {
     rows = [];
   }
   const index = rows.findIndex((row) => row[0] === item.id);
-  const payload: (string | number)[] = [
+  const payload: string[] = [
     item.id,
     item.kind,
     item.name,
     item.mime,
     new Date().toISOString(),
     item.driveUrl ?? "",
-    data,
+    ...chunks,
   ];
   if (index >= 0) {
-    await sheetsUpdate(`${MEDIA_SHEET}!A${index + 2}:G${index + 2}`, [payload], "RAW");
+    const previous = rows[index] ?? [];
+    while (payload.length < previous.length) payload.push("");
+    const endCol = columnA1(Math.max(0, payload.length - 1));
+    await sheetsUpdate(`${MEDIA_SHEET}!A${index + 2}:${endCol}${index + 2}`, [payload], "RAW");
   } else {
     await sheetsAppend(`${MEDIA_SHEET}!A1`, [payload], "RAW");
   }
@@ -270,12 +274,12 @@ async function writeSheetMedia(item: SheetMediaRow) {
 async function readSheetMedia(id: string): Promise<{ mime: string; data: Buffer; driveUrl?: string } | null> {
   if (!id) return null;
   try {
-    const rows = (await sheetsGet(`${MEDIA_SHEET}!A2:G500`)).values ?? [];
+    const rows = (await sheetsGet(MEDIA_ROWS)).values ?? [];
     const row = rows.find((item) => item[0] === id);
     if (!row) return null;
     const mime = row[3] || "application/octet-stream";
     const driveUrl = row[5]?.trim() || undefined;
-    const data = row[6]?.trim();
+    const data = joinSheetMedia(row.slice(6));
     if (data) return { mime, data: Buffer.from(data, "base64"), driveUrl };
     return { mime, data: Buffer.alloc(0), driveUrl };
   } catch {
@@ -325,6 +329,12 @@ export async function googleSaveDirtyMedia(
         driveUrl = undefined;
       }
     }
+    const fail = new Error(
+      item.kind === "video"
+        ? "לא הצלחנו לשמור את הסרטון. הקליטו סרטון קצר יותר או צרפו תמונה."
+        : "לא הצלחנו לשמור את התמונה.",
+    );
+    if (!fitsSheet && !driveUrl) throw fail;
     const payload = {
       id: item.id,
       kind: item.kind,
@@ -333,10 +343,10 @@ export async function googleSaveDirtyMedia(
       driveUrl,
       data: item.data,
     };
-    let stored = false;
+    let sheetHasBytes = false;
     try {
-      await writeSheetMedia(payload);
-      stored = true;
+      await writeSheetMedia({ ...payload, data: fitsSheet ? item.data : undefined });
+      sheetHasBytes = fitsSheet;
     } catch {
       if (!driveUrl) {
         try {
@@ -345,28 +355,21 @@ export async function googleSaveDirtyMedia(
           driveUrl = undefined;
         }
       }
-      if (driveUrl) {
-        try {
-          await writeSheetMedia({ ...payload, driveUrl, data: fitsSheet ? item.data : undefined });
-          stored = true;
-        } catch {
-          stored = false;
-        }
+      if (!driveUrl) throw fail;
+      try {
+        await writeSheetMedia({ ...payload, driveUrl, data: undefined });
+      } catch {
+        // The Drive file is still the playback source.
       }
     }
+    const url = sheetHasBytes ? mediaApiUrl(item.id) : driveUrl;
+    if (!url) throw fail;
     saved.push({
       id: item.id,
       kind: item.kind,
       name: item.name,
       mime: item.mime,
-      url: driveUrl && !stored ? driveUrl : mediaApiUrl(item.id),
-    });
-    saved.push({
-      id: item.id,
-      kind: item.kind,
-      name: item.name,
-      mime: item.mime,
-      url: mediaApiUrl(item.id),
+      url,
     });
   }
   return saved;
@@ -613,8 +616,12 @@ export async function googleReportStock(
     lastIndex = rowNumber - 1;
     if (serial) nextSerial += 1;
   }
-  await sheetsUpdate(`'${meta.sheet}'!C1`, [[todayIso()]]);
   const at = new Date();
+  await sheetsUpdate(`'${meta.sheet}'!D1:D2`, [[sheetFillDate(at)], [user.trim()]], "RAW");
+  const previousStamp = String(rows[0]?.[2] ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(previousStamp)) {
+    await sheetsUpdate(`'${meta.sheet}'!C1`, [[""]], "RAW");
+  }
   try {
     await writeDailyReport(farm, farmId, updates, user, note, dirtyMedia, at);
   } catch {

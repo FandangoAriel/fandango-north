@@ -74,6 +74,37 @@ assert.equal(toBringQty(21, 20, -1), 0);
 assert.equal(toBringQty(23, 40, 17), 17);
 assert.equal(columnA1(0), "A");
 assert.equal(columnA1(5), "F");
+assert.equal(columnA1(9), "J");
+
+{
+  const live: string[][] = [
+    ["", "בית העמק", "2026-10-03", "30/09/2026"],
+    ["", "", "", "", "בית העמק", "", "", "", "בית העמק", "מיכלים משולטים"],
+    ["", "ציוד", "כמות קיימת", "מלאי מקסימום", "ציוד לספק", "כמות", "", "", "מספר + שם לקוח", "סוג מיכל"],
+    ["1", "חביות", "6", "40", "חביות", "34", "FALSE", "", "35876-מאפיית בייגל", "450", "FALSE"],
+    ["2", "עגלות לחביות", "24", "20", "עגלות לחביות", "0", "FALSE", "", "", "0", "FALSE"],
+  ];
+  const parsed = parseFarmSheet("beit-haemek", live);
+  assert.equal(parsed.layout.actualCol, 2);
+  assert.equal(parsed.layout.maxCol, 3);
+  assert.equal(parsed.layout.container.type, 9);
+  assert.equal(parsed.containers.length, 1);
+  assert.equal(parsed.containers[0]?.customerName, "35876-מאפיית בייגל");
+  assert.equal(parsed.containers[0]?.containerType, "450");
+  assert.equal(parsed.updatedAt, "2026-09-30");
+}
+
+{
+  const parsed = parseFarmSheet("kfar-hasidim", [
+    ["כפר חסידים", "תאריך עדכון:", "20/05/2026", "04/10/2026"],
+    [],
+    ["ציוד", "כמות בפועל", "מלאי מקסימום"],
+    ["חביות", "4", "32"],
+  ]);
+  assert.equal(parsed.updatedAt, "2026-10-04");
+  assert.equal(parsed.layout.actualCol, 1);
+  assert.equal(parsed.equipment[0]?.actual, 4);
+}
 
 {
   const parsed = parseFarmSheet("beit-haemek", beitHaemek);
