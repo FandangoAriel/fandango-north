@@ -54,7 +54,6 @@ export function loadWhatsAppText(
   items: LoadItem[],
   note = "",
   byLoader = false,
-  dirtyMedia: { name: string; url: string }[] = [],
   shareMedia: { name: string; url: string }[] = [],
 ) {
   const lines = [`העמסה · ${farmName}`, `${user} · ${new Date().toLocaleString("he-IL")}`, ""];
@@ -102,15 +101,9 @@ export function loadWhatsAppText(
   }
   if (note.trim()) lines.push(`הערה: ${note.trim()}`);
   if (byLoader) lines.push("ע״י המעמיס");
-  if (dirtyMedia.length) {
-    lines.push("", "צפייה בסרטון שנשלח:");
-    for (const item of dirtyMedia) {
-      lines.push(item.url || item.name);
-    }
-  }
   const attached = shareMedia.filter((item) => item.url.trim() || item.name.trim());
   if (attached.length) {
-    lines.push("", "תמונה או סרטון מהמעמיס:");
+    lines.push("", "צפייה בסרטון שנשלח:");
     for (const item of attached) lines.push(item.url.trim() || item.name.trim());
   }
   return lines.join("\n").trim();
@@ -172,7 +165,6 @@ export function loadShareMessage(input: {
   items: LoadItem[];
   note?: string;
   byLoader?: boolean;
-  dirtyMedia?: { name: string; url: string; kind?: "image" | "video" }[];
   shareMedia?: ShareMediaLink[];
   origin: string;
   at?: Date;
@@ -185,12 +177,6 @@ export function loadShareMessage(input: {
       url: whatsAppMediaUrl(item.url, origin, item.kind),
     }))
     .filter((item) => item.url);
-  const dirtyMedia = (input.dirtyMedia ?? [])
-    .map((item) => ({
-      name: item.name,
-      url: whatsAppMediaUrl(item.url, origin, item.kind) || item.url,
-    }))
-    .filter((item) => item.url || item.name);
   const at = input.at ?? new Date();
   const body = loadWhatsAppText(
     input.farmName,
@@ -198,7 +184,6 @@ export function loadShareMessage(input: {
     input.items,
     input.note ?? "",
     input.byLoader ?? false,
-    dirtyMedia,
     shareMedia,
   );
   const snapshot: LoadShareSnapshot = {
