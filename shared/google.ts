@@ -11,7 +11,7 @@ import type {
   StockUpdate,
   DirtyMedia,
 } from "./types";
-import { FARM_SHEETS, applyItemOrder, driveFileId, farmLoadItems, sheetFillDate } from "./types";
+import { FARM_SHEETS, applyItemOrder, driveFileId, farmLoadItems, inventoryNoteItem, sheetFillDate, withInventoryNote } from "./types";
 import {
   columnA1,
   lastEquipmentRowIndex,
@@ -692,9 +692,40 @@ export async function googleListReports(farmId: FarmId): Promise<ReportRecord[]>
   }
 }
 
+export async function googleListLoads(
+  farmId: FarmId,
+): Promise<{ at: string; items: { itemId: string; mark?: LoadMark }[] }[]> {
+  try {
+    const data = await sheetsGet("העמסות!A1:I300");
+    const farmName = FARM_SHEETS[farmId].name;
+    return (data.values ?? [])
+      .filter((row) => row[3] === farmId || row[2] === farmName)
+      .map((row) => {
+        let items: { itemId: string; mark?: LoadMark }[] = [];
+        try {
+          const parsed = JSON.parse(row[7] || "[]") as { itemId?: string; mark?: LoadMark }[];
+          if (Array.isArray(parsed)) {
+            items = parsed
+              .filter((item) => item?.itemId)
+              .map((item) => ({ itemId: String(item.itemId), mark: item.mark }));
+          }
+        } catch {
+          items = [];
+        }
+        return { at: row[0] || "", items };
+      });
+  } catch {
+    return [];
+  }
+}
+
 export async function googleGetLoad(farmId: FarmId): Promise<LoadItem[]> {
   const farm = await googleGetFarm(farmId);
-  return farmLoadItems(farm);
+  const [reports, loads] = await Promise.all([
+    googleListReports(farmId).catch(() => []),
+    googleListLoads(farmId).catch(() => []),
+  ]);
+  return withInventoryNote(farmLoadItems(farm), inventoryNoteItem(reports, loads));
 }
 
 export async function googleSaveLoad(
@@ -755,6 +786,9 @@ export async function googleSaveLoad(
       nextItems
         .map((item) => {
           const label = item.detail ? `${item.name} ${item.detail}` : item.name;
+          if (item.kind === "note") {
+            return `הערה ${item.name} ${item.mark === "unset" ? "לא סומן" : item.mark}`;
+          }
           if (item.kind === "container") {
             return `${label} ${item.mark}`;
           }

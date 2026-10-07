@@ -2,7 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createSeedStore } from "./seed";
 import type { AppStore, DirtyMedia, FarmId, LoadItem, LoadMark, LoadRecord, ReportRecord, StockUpdate } from "./types";
-import { applyItemOrder, farmLoadItems, isNewEquipmentId, todayIso } from "./types";
+import { applyItemOrder, farmLoadItems, inventoryNoteItem, isNewEquipmentId, todayIso, withInventoryNote } from "./types";
 
 const STORE_PATH = join(process.cwd(), ".data", "store.json");
 
@@ -144,9 +144,21 @@ export function reportStock(
   return getFarm(farmId);
 }
 
+export function listLoads(farmId: FarmId): LoadRecord[] {
+  return readStore().loads.filter((item) => item.farmId === farmId);
+}
+
 export function getLoadChecklist(farmId: FarmId): LoadItem[] {
   const farm = getFarm(farmId);
-  return farmLoadItems(farm);
+  const store = readStore();
+  const reports = [...store.reports]
+    .filter((item) => item.farmId === farmId && item.kind !== "load")
+    .reverse();
+  const note = inventoryNoteItem(
+    reports,
+    store.loads.filter((item) => item.farmId === farmId),
+  );
+  return withInventoryNote(farmLoadItems(farm), note);
 }
 
 export function saveLoad(
@@ -160,8 +172,15 @@ export function saveLoad(
   const farm = store.farms.find((item) => item.id === farmId);
   if (!farm) throw new Error("farm_not_found");
   const ordered = applyItemOrder(farm.equipment, farm.itemOrder);
+  const reports = [...store.reports]
+    .filter((item) => item.farmId === farmId && item.kind !== "load")
+    .reverse();
+  const noteItem = inventoryNoteItem(
+    reports,
+    store.loads.filter((item) => item.farmId === farmId),
+  );
   const byId = new Map(itemsPayload.map((item) => [item.itemId, item]));
-  const items = farmLoadItems({ ...farm, equipment: ordered }).map((item) => {
+  const items = withInventoryNote(farmLoadItems({ ...farm, equipment: ordered }), noteItem).map((item) => {
     const update = byId.get(item.itemId);
     if (!update) return item;
     return {

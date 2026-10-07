@@ -30,7 +30,7 @@ export interface Farm {
 
 export interface LoadItem {
   itemId: string;
-  kind: "stock" | "container";
+  kind: "stock" | "container" | "note";
   name: string;
   detail?: string;
   toSupply: number;
@@ -277,6 +277,44 @@ export function mergeSubsetOrder(fullOrder: string[], subsetOrder: string[]): st
     i += 1;
   }
   return next;
+}
+
+export function noteItemId(reportAt: string) {
+  return `note:${reportAt}`;
+}
+
+/** Latest inventory note that the loader has not marked yet. Not a permanent stock row. */
+export function inventoryNoteItem(
+  reports: Pick<ReportRecord, "at" | "note" | "kind" | "user">[],
+  loads: { at: string; items: { itemId: string; mark?: LoadMark | string }[] }[],
+): LoadItem | null {
+  const inventory = reports.filter((report) => report.kind !== "load");
+  for (const report of inventory) {
+    const text = report.note?.trim();
+    if (!text || !report.at) continue;
+    const itemId = noteItemId(report.at);
+    const handled = loads.some(
+      (load) =>
+        load.at >= report.at &&
+        load.items.some((item) => item.itemId === itemId && item.mark && item.mark !== "unset"),
+    );
+    if (handled) return null;
+    return {
+      itemId,
+      kind: "note",
+      name: text,
+      detail: report.user?.trim() ? `הערה מדיווח · ${report.user.trim()}` : "הערה מדיווח",
+      toSupply: 1,
+      mark: "unset",
+      haveQty: null,
+    };
+  }
+  return null;
+}
+
+export function withInventoryNote(items: LoadItem[], note: LoadItem | null): LoadItem[] {
+  if (!note) return items;
+  return [note, ...items.filter((item) => item.kind !== "note" && item.itemId !== note.itemId)];
 }
 
 export function farmLoadItems(farm: Farm, previous: Map<string, LoadItem> = new Map()): LoadItem[] {
