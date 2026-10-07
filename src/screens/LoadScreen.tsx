@@ -18,6 +18,14 @@ import { SortableList, SortableRow } from "../sortable";
 import { useEnterRefresh } from "../useEnterRefresh";
 
 function itemTitle(item: LoadItem) {
+  if (item.kind === "note") {
+    return (
+      <span className="block min-w-0">
+        <span className="block whitespace-normal">{item.name}</span>
+        {item.detail ? <span className="block text-[11px] font-normal text-black/45">{item.detail}</span> : null}
+      </span>
+    );
+  }
   if (item.kind === "container" && item.detail && item.detail !== item.name) {
     return (
       <span className="block min-w-0">
@@ -147,6 +155,7 @@ export function LoadScreen({
   );
 
   const markedCount = items.filter((item) => item.mark !== "unset").length;
+  const notes = items.filter((item) => item.kind === "note");
   const containers = items.filter((item) => item.kind === "container");
   const stock = items.filter((item) => item.kind === "stock");
   const waHref = whatsAppUrl(loadWhatsAppText(FARM_SHEETS[farmId].name, user, items, note, byLoader, dirtyMedia));
@@ -178,7 +187,8 @@ export function LoadScreen({
   async function reorderStock(ids: string[]) {
     const byId = new Map(items.map((item) => [item.itemId, item]));
     const nextStock = ids.map((id) => byId.get(id)).filter((item): item is LoadItem => Boolean(item));
-    setItems([...containers, ...nextStock]);
+    const notes = items.filter((item) => item.kind === "note");
+    setItems([...notes, ...containers, ...nextStock]);
     const merged = mergeSubsetOrder(equipmentIds.length ? equipmentIds : ids, ids);
     setEquipmentIds(merged);
     try {
@@ -261,6 +271,13 @@ export function LoadScreen({
         </div>
       ) : (
         <>
+          {notes.length > 0 && (
+            <section>
+              <h2 className="mb-0.5 text-[11px] font-semibold text-[#3d6b4a]">הערה מהדיווח</h2>
+              <p className="mb-1 text-[11px] text-black/45">לסמן אחרי הטיפול. הפריט מופיע פעם אחת.</p>
+              <LoadRows items={notes} onCycle={cycle} onHaveQty={setHaveQty} />
+            </section>
+          )}
           {containers.length > 0 && (
             <section>
               <h2 className="mb-0.5 text-[11px] font-semibold text-[#3d6b4a]">מיכלים משולטים</h2>

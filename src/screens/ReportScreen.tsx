@@ -381,8 +381,13 @@ export function ReportScreen({
               : "הדיווח נשמר"
             : "אין כמויות לדיווח",
       );
-      const listed = await api<{ reports: ReportRecord[] }>(`/api/reports?farm=${farmId}`);
-      setReports(listed.reports);
+      try {
+        const listed = await api<{ reports: ReportRecord[] }>(`/api/reports?farm=${farmId}`);
+        setReports(listed.reports);
+      } catch {
+        // the report itself was saved
+      }
+      onBack();
     } catch (error) {
       const text = error instanceof Error ? error.message : "";
       setError(text.startsWith("לא ") ? text : "השמירה נכשלה");

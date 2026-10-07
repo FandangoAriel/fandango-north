@@ -18,6 +18,22 @@ export function loadWhatsAppText(
   const lines = [`העמסה · ${farmName}`, `${user} · ${new Date().toLocaleString("he-IL")}`, ""];
   const stock = items.filter((item) => item.kind === "stock");
   const containers = items.filter((item) => item.kind === "container");
+  const notes = items.filter((item) => item.kind === "note");
+  if (notes.length) {
+    lines.push("הערה מהדיווח:");
+    for (const item of notes) {
+      const status =
+        item.mark === "full"
+          ? "סומן"
+          : item.mark === "none"
+            ? "אין"
+            : item.mark === "partial"
+              ? "חלקי"
+              : "לא סומן";
+      lines.push(`${item.name} — ${status}`);
+    }
+    lines.push("");
+  }
   if (stock.length) {
     lines.push("ציוד:");
     for (const item of stock) {
