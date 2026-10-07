@@ -58,3 +58,19 @@ export function parseByteRange(
 export function mediaApiUrl(id: string) {
   return `/api/media/${id}`;
 }
+
+const MEDIA_EXT = /\.(?:jpe?g|png|mp4|webm|mov|m4v)$/i;
+
+/** Ids as stored, plus a hyphen-free UUID restored to the canonical dashed form. */
+export function mediaLookupIds(raw: string): string[] {
+  const noExt = decodeURIComponent(raw).replace(MEDIA_EXT, "");
+  const ids = new Set<string>();
+  if (noExt) ids.add(noExt);
+  const hex = noExt.replace(/-/g, "");
+  if (/^[0-9a-fA-F]{32}$/.test(hex)) {
+    const lower = hex.toLowerCase();
+    ids.add(lower);
+    ids.add(`${lower.slice(0, 8)}-${lower.slice(8, 12)}-${lower.slice(12, 16)}-${lower.slice(16, 20)}-${lower.slice(20)}`);
+  }
+  return [...ids];
+}

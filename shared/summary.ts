@@ -34,6 +34,20 @@ export function absoluteMediaUrl(url: string, origin: string) {
   return "";
 }
 
+function mediaExtension(kind?: "image" | "video") {
+  return kind === "video" ? ".mp4" : ".jpg";
+}
+
+/** A media address WhatsApp can keep intact: no hyphens in the id, and a file extension. */
+export function whatsAppMediaUrl(url: string, origin: string, kind?: "image" | "video") {
+  const absolute = absoluteMediaUrl(url, origin);
+  if (!absolute) return "";
+  const match = absolute.match(/\/api\/media\/([^/?#]+)$/);
+  if (!match) return absolute;
+  const bare = decodeURIComponent(match[1]).replace(/\.(?:jpe?g|png|mp4|webm|mov|m4v)$/i, "").replace(/-/g, "");
+  return `${origin.replace(/\/$/, "")}/api/media/${bare}${mediaExtension(kind)}`;
+}
+
 export function loadWhatsAppText(
   farmName: string,
   user: string,
@@ -158,7 +172,7 @@ export function loadShareMessage(input: {
   items: LoadItem[];
   note?: string;
   byLoader?: boolean;
-  dirtyMedia?: { name: string; url: string }[];
+  dirtyMedia?: { name: string; url: string; kind?: "image" | "video" }[];
   shareMedia?: ShareMediaLink[];
   origin: string;
   at?: Date;
@@ -168,11 +182,14 @@ export function loadShareMessage(input: {
     .map((item) => ({
       kind: item.kind,
       name: item.name,
-      url: absoluteMediaUrl(item.url, origin),
+      url: whatsAppMediaUrl(item.url, origin, item.kind),
     }))
     .filter((item) => item.url);
   const dirtyMedia = (input.dirtyMedia ?? [])
-    .map((item) => ({ name: item.name, url: absoluteMediaUrl(item.url, origin) || item.url }))
+    .map((item) => ({
+      name: item.name,
+      url: whatsAppMediaUrl(item.url, origin, item.kind) || item.url,
+    }))
     .filter((item) => item.url || item.name);
   const at = input.at ?? new Date();
   const body = loadWhatsAppText(

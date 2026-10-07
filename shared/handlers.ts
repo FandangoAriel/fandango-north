@@ -22,7 +22,7 @@ import {
 } from "./google";
 import { dirtyMediaFromReports, driveFileId, type DirtyMedia, type FarmId, type LoadMark, type StockUpdate } from "./types";
 import { MAX_MEDIA_BYTES, mediaIdOk, readMediaFile, saveMediaFile } from "./media-store";
-import { parseByteRange } from "./sheet-media";
+import { mediaLookupIds, parseByteRange } from "./sheet-media";
 
 const jsonHeaders = {
   "Content-Type": "application/json; charset=utf-8",
@@ -211,11 +211,14 @@ export async function handleReport(payload: {
 }
 
 export async function handleGetMedia(idRaw: string | null, rangeHeader?: string | null) {
-  const id = decodeURIComponent(idRaw?.trim() ?? "");
-  const local = readMediaFile(id);
-  if (local) return mediaResponse(local.data, local.mime, rangeHeader);
-  const driveId = driveFileId(id) ?? (mediaIdOk(id) ? id : "");
-  if (googleConfigured() && driveId) {
+  const ids = mediaLookupIds(decodeURIComponent(idRaw?.trim() ?? ""));
+  for (const id of ids) {
+    const local = readMediaFile(id);
+    if (local) return mediaResponse(local.data, local.mime, rangeHeader);
+  }
+  for (const id of ids) {
+    const driveId = driveFileId(id) ?? (mediaIdOk(id) ? id : "");
+    if (!googleConfigured() || !driveId) continue;
     try {
       const file = await googleGetMediaFile(driveId);
       if (file) {
@@ -227,7 +230,7 @@ export async function handleGetMedia(idRaw: string | null, rangeHeader?: string 
         return mediaResponse(file.data, file.mime, rangeHeader);
       }
     } catch {
-      // fall through
+      // try the next id form
     }
   }
   return json(404, { error: "not_found" });
