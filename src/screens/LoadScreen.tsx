@@ -130,7 +130,6 @@ export function LoadScreen({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [note, setNote] = useState("");
-  const [byLoader, setByLoader] = useState(false);
   const [warn, setWarn] = useState("");
   const [saved, setSaved] = useState(false);
   const [shareMedia, setShareMedia] = useState<ShareDraft[]>([]);
@@ -330,7 +329,6 @@ export function LoadScreen({
       user,
       items,
       note,
-      byLoader,
       dirtyMedia,
       shareMedia: attached.map((item) => ({
         kind: item.kind,
@@ -347,7 +345,6 @@ export function LoadScreen({
           farmId,
           user,
           note,
-          byLoader,
           items: items.map((item) => ({
             itemId: item.itemId,
             mark: item.mark,
@@ -438,12 +435,7 @@ export function LoadScreen({
             onRemove={dropShare}
           />
           {mediaBusy && <p className="text-[12px] text-black/55">מעלה את התמונה או הסרטון…</p>}
-          <NoteField
-            value={note}
-            onChange={setNote}
-            label="הערה"
-            checkbox={{ label: "ע״י המעמיס", checked: byLoader, onChange: setByLoader }}
-          />
+          <NoteField value={note} onChange={setNote} label="הערה" />
           {warn && (
             <SaveWarning
               text={warn}

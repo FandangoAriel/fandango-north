@@ -37,6 +37,7 @@ const { text, pageUrl } = loadShareMessage({
   user: "אריאל",
   items,
   note: "להביא מפתח",
+  dirtyMedia: [{ name: "סרטון", url: "/api/media/dirty1234" }],
   shareMedia: [{ kind: "video", name: "סרטון", url: "/api/media/abc12345" }],
   origin: "https://example.com",
   at: new Date("2026-10-07T12:00:00.000Z"),
@@ -46,8 +47,11 @@ assert.match(text, /חביות — צריך 4, הועמס 4/);
 assert.match(text, /1234 — לא סומן/);
 assert.match(text, /לקוח א · 450 — אין/);
 assert.match(text, /הערה: להביא מפתח/);
+assert.match(text, /צפייה בסרטון שנשלח:\nhttps:\/\/example.com\/api\/media\/dirty1234/);
 assert.match(text, /תמונה או סרטון מהמעמיס:\nhttps:\/\/example.com\/api\/media\/abc12345/);
-assert.match(text, /לצפייה ברשימה ובסרטון: https:\/\/example.com\/\?view=load#/);
+assert.equal(text.includes("לצפייה ברשימה ובסרטון"), false);
+assert.equal(text.includes("view=load"), false);
+assert.equal(text.includes("ע״י המעמיס"), false);
 assert.equal(pageUrl.startsWith("https://example.com/?view=load#"), true);
 
 const parsed = parseLoadShare(new URL(pageUrl).hash);
