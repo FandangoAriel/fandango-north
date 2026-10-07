@@ -89,7 +89,7 @@ export function loadWhatsAppText(
   if (note.trim()) lines.push(`הערה: ${note.trim()}`);
   if (byLoader) lines.push("ע״י המעמיס");
   if (dirtyMedia.length) {
-    lines.push("", "ציוד מלוכלך:");
+    lines.push("", "צפייה בסרטון שנשלח:");
     for (const item of dirtyMedia) {
       lines.push(item.url || item.name);
     }
@@ -192,10 +192,9 @@ export function loadShareMessage(input: {
     lines: body.split("\n"),
     media: shareMedia,
   };
-  const pageUrl = loadSharePageUrl(origin, snapshot);
   return {
-    text: `${body}\n\nלצפייה ברשימה ובסרטון: ${pageUrl}`,
-    pageUrl,
+    text: body,
+    pageUrl: loadSharePageUrl(origin, snapshot),
     snapshot,
   };
 }
