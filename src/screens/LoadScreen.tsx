@@ -117,7 +117,6 @@ export function LoadScreen({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [note, setNote] = useState("");
-  const [byLoader, setByLoader] = useState(false);
   const [warn, setWarn] = useState("");
   const [saved, setSaved] = useState(false);
 
@@ -158,7 +157,7 @@ export function LoadScreen({
   const notes = items.filter((item) => item.kind === "note");
   const containers = items.filter((item) => item.kind === "container");
   const stock = items.filter((item) => item.kind === "stock");
-  const waHref = whatsAppUrl(loadWhatsAppText(FARM_SHEETS[farmId].name, user, items, note, byLoader, dirtyMedia));
+  const waHref = whatsAppUrl(loadWhatsAppText(FARM_SHEETS[farmId].name, user, items, note, false, dirtyMedia));
 
   function cycle(id: string) {
     setWarn("");
@@ -219,7 +218,6 @@ export function LoadScreen({
           farmId,
           user,
           note,
-          byLoader,
           items: items.map((item) => ({
             itemId: item.itemId,
             mark: item.mark,
@@ -290,12 +288,7 @@ export function LoadScreen({
               <LoadRows items={stock} onCycle={cycle} onHaveQty={setHaveQty} onReorder={reorderStock} />
             </section>
           )}
-          <NoteField
-            value={note}
-            onChange={setNote}
-            label="הערה"
-            checkbox={{ label: "ע״י המעמיס", checked: byLoader, onChange: setByLoader }}
-          />
+          <NoteField value={note} onChange={setNote} label="הערה" />
           {warn && <SaveWarning text={warn} onCancel={() => setWarn("")} onConfirm={() => void save()} />}
           <div className="sticky bottom-0 z-20 space-y-2 bg-[#f4efe4] pt-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
             <PrimaryButton onClick={() => void save()} disabled={saving}>

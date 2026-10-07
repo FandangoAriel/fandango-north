@@ -235,28 +235,15 @@ export function NoteField({
   value,
   onChange,
   label,
-  checkbox,
 }: {
   value: string;
   onChange: (next: string) => void;
   label: string;
-  checkbox?: { label: string; checked: boolean; onChange: (next: boolean) => void };
 }) {
   return (
     <div>
-      <div className="mb-0.5 flex items-center justify-between gap-2">
+      <div className="mb-0.5">
         <span className="text-[11px] text-black/50">{label}</span>
-        {checkbox && (
-          <label className="flex items-center gap-1.5 text-[12px] font-medium text-[#243328]">
-            <input
-              type="checkbox"
-              checked={checkbox.checked}
-              onChange={(event) => checkbox.onChange(event.target.checked)}
-              className="size-4 accent-[#3d6b4a]"
-            />
-            {checkbox.label}
-          </label>
-        )}
       </div>
       <textarea
         value={value}
