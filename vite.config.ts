@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import {
   handleGetMedia,
+  handleUploadMedia,
   handleGetLoad,
   handleInventory,
   handleListReports,
@@ -66,6 +67,11 @@ function apiPlugin(): Plugin {
           if (url.pathname === "/api/report" && req.method === "POST") {
             const payload = JSON.parse((await readBody(req)) || "{}");
             send(res, await handleReport(payload));
+            return;
+          }
+          if (url.pathname === "/api/upload-media" && req.method === "POST") {
+            const payload = JSON.parse((await readBody(req)) || "{}");
+            send(res, await handleUploadMedia(payload));
             return;
           }
           if (url.pathname.startsWith("/api/media/")) {

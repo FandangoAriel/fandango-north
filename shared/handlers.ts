@@ -140,6 +140,20 @@ async function persistDirtyMedia(items: DirtyMediaInput[]): Promise<DirtyMedia[]
   return local;
 }
 
+export async function handleUploadMedia(payload: { items?: DirtyMediaInput[] }) {
+  try {
+    const items = await persistDirtyMedia(payload.items ?? []);
+    if ((payload.items ?? []).some((item) => item.data || item.url) && items.length === 0) {
+      return json(400, { error: "לא הצלחנו לשמור את הקובץ. נסו סרטון קצר יותר או תמונה." });
+    }
+    return json(200, { items });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "error";
+    if (message.startsWith("לא ")) return json(400, { error: message });
+    throw error;
+  }
+}
+
 function farmIdFrom(value: string | null): FarmId {
   if (value === "beit-haemek" || value === "lehavot-haviva" || value === "kfar-hasidim") {
     return value;
