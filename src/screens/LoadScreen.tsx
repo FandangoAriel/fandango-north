@@ -350,11 +350,18 @@ export function LoadScreen({
           })),
         }),
       });
-      if (share) openWhatsApp(message.text, popup);
+      if (share) {
+        try {
+          openWhatsApp(message.text, popup);
+        } catch {
+          popup?.close();
+        }
+      }
       onBack();
-    } catch {
+    } catch (error) {
       popup?.close();
-      setError("השמירה נכשלה");
+      const message = error instanceof Error ? error.message : "";
+      setError(message && message !== "request_failed" ? message : "השמירה נכשלה");
     } finally {
       setSaving(false);
       setSavingShare(false);

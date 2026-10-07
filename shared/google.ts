@@ -97,7 +97,10 @@ async function sheetsAppend(
     },
     body: JSON.stringify({ values }),
   });
-  if (!res.ok) throw new Error(`sheets_append_${res.status}`);
+  if (!res.ok) {
+    const detail = (await res.text().catch(() => "")).slice(0, 180);
+    throw new Error(`sheets_append_${res.status}${detail ? `:${detail}` : ""}`);
+  }
 }
 
 async function sheetsBatchUpdate(requests: unknown[]) {
@@ -756,6 +759,7 @@ export async function googleSaveLoad(
     byLoader,
     items: nextItems,
   };
+  await ensureSheet("העמסות");
   await sheetsAppend("העמסות!A1", [
     [
       record.at,
@@ -775,7 +779,7 @@ export async function googleSaveLoad(
       ),
       byLoader ? "כן" : "",
     ],
-  ]);
+  ], "RAW");
   try {
     await appendReportsLog([
       record.at,

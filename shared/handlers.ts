@@ -280,8 +280,9 @@ export async function handleSaveLoad(payload: {
     try {
       const record = await googleSaveLoad(farmId, user, items, note, byLoader);
       return json(200, { record, demo: false });
-    } catch {
-      // demo fallback
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "";
+      return json(500, { error: "השמירה לגיליון נכשלה", detail });
     }
   }
   const record = saveLoad(farmId, user, items, note, byLoader);
