@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react";
 import type { EquipmentItem, Farm, FarmId, ReportRecord, StockUpdate } from "../../shared/types";
 import { isNewEquipmentId } from "../../shared/types";
 import { api } from "../api";
-import { CompactName, CompactQty, ChipButton, DirtyMediaField, NoteField, PrimaryButton, SaveWarning, Screen } from "../ui";
+import { CompactName, CompactQty, ChipButton, DirtyMediaField, NoteField, PrimaryButton, RefreshButton, SaveWarning, Screen } from "../ui";
 import { blobToBase64, compressImage, idbGet, idbPut, kindFromMime, MAX_MEDIA_BYTES, MAX_VIDEO_BYTES } from "../dirtyMedia";
 import { SortableList, SortableRow } from "../sortable";
 import { useEnterRefresh } from "../useEnterRefresh";
@@ -483,9 +483,7 @@ export function ReportScreen({
           עריכת דיווח קודם
         </ChipButton>
         <ChipButton onClick={fillFromSheet}>מילוי לפי הגיליון</ChipButton>
-        <ChipButton onClick={() => void refreshSheet()}>
-          {refreshing ? "מרענן…" : "רענון מהגיליון"}
-        </ChipButton>
+        <RefreshButton busy={refreshing} onClick={() => void refreshSheet()} />
       </div>
       {reorderMode && (
         <p className="text-[11px] text-[#3d6b4a]">מצב סידור פעיל — גררו את הפריטים. כבו כדי לגלול את הרשימה.</p>

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Camera, Image as ImageIcon, Video, X } from "lucide-react";
+import { Camera, ChevronRight, Image as ImageIcon, RefreshCw, Video, X } from "lucide-react";
 import type { LoadMark, DirtyMedia } from "../shared/types";
 import { mediaPreviewUrl } from "../shared/types";
 
@@ -26,8 +26,9 @@ export function Screen({
           <button
             type="button"
             onClick={onBack}
-            className="mb-1 min-h-8 text-xs font-medium text-[#3d6b4a]"
+            className="mb-2 inline-flex min-h-10 items-center gap-1 rounded-lg border-2 border-[#3d6b4a] bg-white px-3.5 !text-[15px] !font-bold leading-none text-[#3d6b4a] shadow-sm"
           >
+            <ChevronRight size={16} strokeWidth={2.6} />
             חזרה
           </button>
         )}
@@ -99,6 +100,28 @@ export function ChipButton({
       }`}
     >
       {children}
+    </button>
+  );
+}
+
+export function RefreshButton({
+  onClick,
+  busy,
+  label = "רענון מהגיליון",
+}: {
+  onClick: () => void;
+  busy?: boolean;
+  label?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      aria-label={busy ? "מרענן" : label}
+      className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-[#3d6b4a] bg-white text-[#3d6b4a] disabled:opacity-60"
+    >
+      <RefreshCw size={16} strokeWidth={2.4} className={busy ? "animate-spin" : undefined} />
     </button>
   );
 }

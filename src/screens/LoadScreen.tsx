@@ -5,9 +5,9 @@ import { loadShareMessage, showLoadSaveOnly, whatsAppUrl } from "../../shared/su
 import { api } from "../api";
 import { blobToBase64, compressImage, kindFromMime, MAX_MEDIA_BYTES, MAX_VIDEO_BYTES } from "../dirtyMedia";
 import {
-  ChipButton,
   CompactQty,
   DirtyMediaField,
+  RefreshButton,
   DirtyMediaGallery,
   NoteField,
   PrimaryButton,
@@ -135,6 +135,7 @@ export function LoadScreen({
   const [shareMedia, setShareMedia] = useState<ShareDraft[]>([]);
   const [shareAfter, setShareAfter] = useState(false);
   const [savingShare, setSavingShare] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   function loadList(keepMarks = false) {
     return api<{ items: LoadItem[]; equipmentIds?: string[]; dirtyMedia?: DirtyMedia[]; demo: boolean }>(
@@ -396,9 +397,15 @@ export function LoadScreen({
         <span>
           {items.length ? `סומנו ${markedCount} מתוך ${items.length}` : "אין פריטים להעמסה"}
         </span>
-        <ChipButton onClick={() => loadList(true).catch(() => setError("הרענון נכשל"))}>
-          רענון מהגיליון
-        </ChipButton>
+        <RefreshButton
+          busy={refreshing}
+          onClick={() => {
+            setRefreshing(true);
+            loadList(true)
+              .catch(() => setError("הרענון נכשל"))
+              .finally(() => setRefreshing(false));
+          }}
+        />
       </div>
       <DirtyMediaGallery items={dirtyMedia} />
       {items.length === 0 ? (
