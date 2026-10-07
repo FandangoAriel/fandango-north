@@ -6,10 +6,12 @@ import { LoadScreen } from "./screens/LoadScreen";
 import { LoginScreen } from "./screens/LoginScreen";
 import { MenuScreen } from "./screens/MenuScreen";
 import { ReportScreen } from "./screens/ReportScreen";
+import { ShareLoadScreen } from "./screens/ShareLoadScreen";
 
 type Step = "login" | "farm" | "menu" | "report" | "load";
 
 export function App() {
+  const shareView = new URLSearchParams(window.location.search).get("view") === "load";
   const [step, setStep] = useState<Step>("login");
   const [user, setUser] = useState("");
   const [farmId, setFarmId] = useState<FarmId | null>(null);
@@ -19,6 +21,7 @@ export function App() {
     setStep("farm");
   }, []);
 
+  if (shareView) return <ShareLoadScreen />;
   if (step === "login") return <LoginScreen onPick={pickUser} />;
   if (step === "farm") {
     return (

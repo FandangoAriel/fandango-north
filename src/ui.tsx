@@ -205,29 +205,43 @@ export function SaveWarning({
   text,
   onCancel,
   onConfirm,
+  confirmLabel,
 }: {
   text: string;
   onCancel: () => void;
   onConfirm: () => void;
+  confirmLabel?: string;
 }) {
   return createPortal(
     <div className="fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-md bg-[#f4efe4] px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-8px_20px_rgba(0,0,0,0.08)]">
-      <ConfirmBar text={text} onCancel={onCancel} onConfirm={onConfirm} />
+      <ConfirmBar text={text} onCancel={onCancel} onConfirm={onConfirm} confirmLabel={confirmLabel} />
     </div>,
     document.body,
   );
 }
 
-export function WhatsAppButton({ href, disabled }: { href: string; disabled?: boolean }) {
+export function WhatsAppButton({
+  href,
+  onClick,
+  disabled,
+  label = "שליחה בוואטסאפ",
+}: {
+  href?: string;
+  onClick?: () => void;
+  disabled?: boolean;
+  label?: string;
+}) {
+  const className = `flex min-h-11 w-full items-center justify-center rounded-xl border border-[#1f6b4a] bg-white px-4 text-center text-[15px] font-semibold text-[#1f6b4a] disabled:opacity-50 ${disabled ? "pointer-events-none opacity-50" : ""}`;
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} disabled={disabled} className={className}>
+        {label}
+      </button>
+    );
+  }
   return (
-    <a
-      href={disabled ? undefined : href}
-      target="_blank"
-      rel="noreferrer"
-      aria-disabled={disabled}
-      className={`flex min-h-11 w-full items-center justify-center rounded-xl border border-[#1f6b4a] bg-white px-4 text-[15px] font-semibold text-[#1f6b4a] ${disabled ? "pointer-events-none opacity-50" : ""}`}
-    >
-      שליחה בוואטסאפ
+    <a href={disabled ? undefined : href} target="_blank" rel="noreferrer" aria-disabled={disabled} className={className}>
+      {label}
     </a>
   );
 }
@@ -311,10 +325,14 @@ export function DirtyMediaField({
   items,
   onAdd,
   onRemove,
+  title = "ציוד מלוכלך",
+  hint = "אפשר לצלם במצלמה או לבחור מהגלריה. סרטון — קצר, של כמה שניות.",
 }: {
   items: DirtyMediaDraft[];
   onAdd: (files: File[]) => void;
   onRemove: (id: string) => void;
+  title?: string;
+  hint?: string;
 }) {
   function pick(files: FileList | null) {
     if (!files?.length) return;
@@ -323,8 +341,8 @@ export function DirtyMediaField({
 
   return (
     <div>
-      <span className="text-[11px] text-black/50">ציוד מלוכלך</span>
-      <p className="mb-1 text-[11px] text-black/45">אפשר לצלם במצלמה או לבחור מהגלריה. סרטון — קצר, של כמה שניות.</p>
+      <span className="text-[11px] text-black/50">{title}</span>
+      <p className="mb-1 text-[11px] text-black/45">{hint}</p>
       <div className="grid grid-cols-2 gap-2">
         <FilePick label="צילום" accept="image/*" capture icon={<Camera size={14} strokeWidth={2.2} />} onFiles={pick} />
         <FilePick label="תמונה מהגלריה" accept="image/*" icon={<ImageIcon size={14} strokeWidth={2.2} />} onFiles={pick} />
