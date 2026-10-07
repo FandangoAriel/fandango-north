@@ -3,6 +3,7 @@ import {
   canStoreMediaInSheet,
   joinSheetMedia,
   mediaApiUrl,
+  mediaLookupIds,
   parseByteRange,
   SHEET_CELL_CHARS,
   SHEET_MEDIA_MAX_CHARS,
@@ -15,6 +16,10 @@ assert.equal(canStoreMediaInSheet(undefined), false);
 assert.equal(canStoreMediaInSheet("x".repeat(SHEET_MEDIA_MAX_CHARS)), true);
 assert.equal(canStoreMediaInSheet("x".repeat(SHEET_MEDIA_MAX_CHARS + 1)), false);
 assert.equal(mediaApiUrl("pic-1"), "/api/media/pic-1");
+assert.deepEqual(mediaLookupIds("d9fb5bbc6e47419b89cb4d13b1f3d80d.jpg"), [
+  "d9fb5bbc6e47419b89cb4d13b1f3d80d",
+  "d9fb5bbc-6e47-419b-89cb-4d13b1f3d80d",
+]);
 
 {
   const data = "a".repeat(SHEET_CELL_CHARS) + "b".repeat(12);

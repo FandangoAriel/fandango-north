@@ -307,18 +307,16 @@ export function LoadScreen({
     }
   }
 
-  function openWhatsApp(text: string, files: File[]) {
-    if (files.length > 0 && typeof navigator.share === "function" && navigator.canShare?.({ files })) {
-      void navigator.share({ text, files }).catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        window.open(whatsAppUrl(text), "_blank", "noopener,noreferrer");
-      });
+  function openWhatsApp(text: string, popup: Window | null) {
+    const url = whatsAppUrl(text);
+    if (popup && !popup.closed) {
+      popup.location.href = url;
       return;
     }
-    window.open(whatsAppUrl(text), "_blank", "noopener,noreferrer");
+    window.location.assign(url);
   }
 
-  async function commit(share: boolean) {
+  async function commit(share: boolean, popup: Window | null) {
     setSaving(true);
     setSavingShare(share);
     setMessage("");
@@ -338,7 +336,6 @@ export function LoadScreen({
       })),
       origin: window.location.origin,
     });
-    if (share) openWhatsApp(message.text, attached.map((item) => item.file));
     try {
       await api("/api/load", {
         method: "POST",
@@ -353,9 +350,10 @@ export function LoadScreen({
           })),
         }),
       });
-      setSaved(true);
-      setMessage(share ? "ההעמסה נשמרה ונפתחה השליחה בוואטסאפ." : "ההעמסה נשמרה.");
+      if (share) openWhatsApp(message.text, popup);
+      onBack();
     } catch {
+      popup?.close();
       setError("השמירה נכשלה");
     } finally {
       setSaving(false);
@@ -371,7 +369,8 @@ export function LoadScreen({
       setWarn(`לא סומנו ${missing.length} פריטים. לשמור בכל זאת?`);
       return;
     }
-    void commit(share);
+    const popup = share ? window.open("about:blank", "_blank") : null;
+    void commit(share, popup);
   }
 
   if (loading) {
@@ -451,7 +450,7 @@ export function LoadScreen({
                 setWarn("");
                 setShareAfter(false);
               }}
-              onConfirm={() => void commit(shareAfter)}
+              onConfirm={() => requestSave(shareAfter)}
             />
           )}
           <div className="sticky bottom-0 z-20 space-y-2 bg-[#f4efe4] pt-2 pb-[max(0.25rem,env(safe-area-inset-bottom))]">
