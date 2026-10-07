@@ -328,7 +328,6 @@ export function LoadScreen({
       user,
       items,
       note,
-      dirtyMedia,
       shareMedia: attached.map((item) => ({
         kind: item.kind,
         name: item.name,
